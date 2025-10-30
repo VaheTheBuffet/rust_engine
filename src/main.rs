@@ -2,8 +2,11 @@ mod window;
 mod camera;
 mod math;
 mod settings;
-mod triangle;
+mod quad;
 mod shader_program;
+mod scene;
+mod chunk;
+mod world;
 
 fn main() {
     let mut app = window::VoxelEngine::new();

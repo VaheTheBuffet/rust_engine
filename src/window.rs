@@ -1,12 +1,14 @@
-use std::{ffi::CString, os::raw::c_void, ptr::null};
-use glfw::{self, fail_on_errors, Action, Context, Key};
-use crate::triangle::draw_triangle;
+use std::{os::raw::c_void};
+use glfw::{self, fail_on_errors, ffi::{glfwGetCursorPos, glfwGetKey, glfwGetTime, glfwSetInputMode, glfwSetWindowTitle, GLFW_CURSOR, GLFW_CURSOR_DISABLED, GLFW_PRESS, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE}, Action, Context, Key};
+use crate::{camera::{Camera, HasCamera}, scene::Scene};
+use crate::settings::*;
 
 
 pub struct VoxelEngine {
     glfw:glfw::Glfw,
     window:glfw::PWindow,
-    events:glfw::GlfwReceiver<(f64, glfw::WindowEvent)>
+    events:glfw::GlfwReceiver<(f64, glfw::WindowEvent)>,
+    player:Camera
 }
 
 impl VoxelEngine {
@@ -17,14 +19,25 @@ impl VoxelEngine {
         glfw.window_hint(glfw::WindowHint::OpenGlProfile(glfw::OpenGlProfileHint::Core));
         glfw.window_hint(glfw::WindowHint::OpenGlForwardCompat(true));
         glfw.window_hint(glfw::WindowHint::OpenGlDebugContext(false));
+        glfw.window_hint(glfw::WindowHint::FocusOnShow(true));
+        //glfw.window_hint(glfw::WindowHint::DepthBits(Some(32)));
 
-        let (mut window, events) = glfw.create_window(1280, 720, "Voxel Engine", glfw::WindowMode::Windowed)
+        let (mut window, events) = glfw.create_window(WIDTH, HEIGHT, "Voxel Engine", glfw::WindowMode::Windowed)
             .expect("Failed to create window");
 
+        unsafe{
+            glfwSetInputMode(window.window_ptr(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+            glfwSetInputMode(window.window_ptr(), GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+        }
+
         window.make_current();
+        window.show();
         window.set_key_polling(true);
 
-        VoxelEngine{glfw, window, events}
+
+        let player = Camera::new();
+
+        VoxelEngine{glfw, window, events, player}
     }
 
 
@@ -32,13 +45,13 @@ impl VoxelEngine {
         let func = |s| {self.window.get_proc_address(s).unwrap_or(
             self.window.get_proc_address("glActiveShaderProgram").unwrap()) as *const c_void};
         gl::load_with(func);
+        unsafe{gl::Enable(gl::DEPTH_TEST);gl::Enable(gl::CULL_FACE)}
     }
 
 
-    pub fn handle_events(&mut self) {
+    pub fn handle_events(&mut self, delta_time:&f32) {
         self.glfw.poll_events();
         for (_, event) in glfw::flush_messages(&self.events) {
-            println!("{:?}", event);
             match event {
                 glfw::WindowEvent::Key(Key::Escape, _, Action::Press, _) => {
                     self.window.set_should_close(true)
@@ -46,30 +59,63 @@ impl VoxelEngine {
                 _ => {},
             }
         }
+        unsafe{
+            if glfwGetKey(self.window.window_ptr(), Key::W as i32) == GLFW_PRESS {self.player.move_forward(delta_time);}
+            if glfwGetKey(self.window.window_ptr(), Key::S as i32) == GLFW_PRESS {self.player.move_backward(delta_time);}
+            if glfwGetKey(self.window.window_ptr(), Key::A as i32) == GLFW_PRESS {self.player.move_left(delta_time);}
+            if glfwGetKey(self.window.window_ptr(), Key::D as i32) == GLFW_PRESS {self.player.move_right(delta_time);}
+            if glfwGetKey(self.window.window_ptr(), Key::Q as i32) == GLFW_PRESS {self.player.move_up(delta_time);}
+            if glfwGetKey(self.window.window_ptr(), Key::E as i32) == GLFW_PRESS {self.player.move_down(delta_time);}
+        }
+    }
+
+
+    pub fn handle_mouse_move(&mut self, dx:f64, dy:f64) {
+        self.player.rot_yaw(&(dx as f32));
+        self.player.rot_pitch(&(dy as f32));
     }
 
 
     pub fn draw(&mut self) {
         unsafe {
             gl::ClearColor(0.2, 0.2, 0.5, 1.0);
-            gl::Clear(gl::COLOR_BUFFER_BIT);
+            gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
         }
     }
 
 
     pub fn run(&mut self) {
-        let (tri_vao, tri_shader) = draw_triangle();
+        let mut last_update_time = 0.0;
+        let mut second = 1.0;
+
+        let mut scene = Scene::new();
+        scene.init(&self.player);
+        let (mut x1, mut y1) = (0f64, 0f64);
+        unsafe {
+            glfwGetCursorPos(self.window.window_ptr(), &mut x1, &mut y1);
+        }
 
         while !self.window.should_close() {
-            self.handle_events();
-            self.draw();
-            unsafe {
-                gl::BindVertexArray(tri_vao);
-                gl::UseProgram(tri_shader);
-                gl::DrawArrays(gl::TRIANGLES, 0, 3);
+            let now = unsafe{glfwGetTime()};
+            let delta_time = now - last_update_time;
+            second -= delta_time;
+            if second <= 0.0 {
+                unsafe{glfwSetWindowTitle(self.window.window_ptr(), format!("{}\0", (1.0/delta_time) as i32).as_ptr() as *const _);}
+                second = 1.0;
             }
+
+            let (x0, y0) = (x1, y1);
+            unsafe{glfwGetCursorPos(self.window.window_ptr(), &mut x1, &mut y1);}
+            self.handle_mouse_move(x1-x0, y1-y0);
+            self.handle_events(&(delta_time as f32));
+            self.player.update();
+            scene.update(&self.player);
+            self.draw();
+            scene.draw();
             self.window.swap_buffers();
+            last_update_time = now;
         }
+
         unsafe{
             gl::UseProgram(0);
             gl::BindVertexArray(0);
@@ -77,4 +123,3 @@ impl VoxelEngine {
         }
     }
 }
-
