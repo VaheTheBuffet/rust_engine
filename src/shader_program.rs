@@ -1,19 +1,63 @@
+use std::os::raw::c_void;
 use std::{ptr::null};
 use crate::camera::{Camera, HasCamera};
 use crate::math::IDENTITY;
+use image::{self};
 
 
 pub struct ShaderProgram {
-    pub quad:u32,
     pub chunk:u32
 }
 
 impl ShaderProgram {
     pub fn new() -> ShaderProgram {
-        let quad = compile_shaders(TRIANGLE_VS, TRIANGLE_FS);
         let chunk = compile_shaders(CHUNK_VS, CHUNK_FS);
-        ShaderProgram{quad, chunk}
+        ShaderProgram::load_texture("test");
+        ShaderProgram::load_texture_array("tex_array_0", 8);
+
+        ShaderProgram{chunk}
     }
+
+
+    pub fn load_texture_array(filename: &str, n_layers:i32) {
+        let image_data = image::ImageReader::open(format!("assets/{}.png", filename)).expect("file not found");
+        let decoded_reader = image_data.decode().unwrap();
+        let (width, height) = (decoded_reader.width() as i32, decoded_reader.height() as i32);
+        let pixel_buffer = decoded_reader.into_rgba8().into_raw();
+
+        unsafe {
+            let mut texture:u32 = 0;
+            gl::GenTextures(1, &mut texture);
+            gl::BindTexture(gl::TEXTURE_2D_ARRAY, texture);
+            gl::TexImage3D(gl::TEXTURE_2D_ARRAY, 0, gl::RGBA8 as i32, width, height / n_layers, n_layers, 0, 
+                           gl::RGBA, gl::UNSIGNED_BYTE, pixel_buffer.as_ptr() as *const c_void);
+            gl::TexParameteri(gl::TEXTURE_2D_ARRAY,gl::TEXTURE_MIN_FILTER,gl::LINEAR as i32);
+            gl::TexParameteri(gl::TEXTURE_2D_ARRAY,gl::TEXTURE_MAG_FILTER,gl::LINEAR as i32);
+            gl::TexParameteri(gl::TEXTURE_2D_ARRAY,gl::TEXTURE_WRAP_S,gl::CLAMP_TO_EDGE as i32);
+            gl::TexParameteri(gl::TEXTURE_2D_ARRAY,gl::TEXTURE_WRAP_T,gl::CLAMP_TO_EDGE as i32);
+        }
+    }
+
+
+    pub fn load_texture(filename: &str) {
+        let image_data = image::ImageReader::open(format!("assets/{}.png", filename)).expect("file not found");
+        let decoded_reader = image_data.decode().unwrap();
+        let (width, height) = (decoded_reader.width() as i32, decoded_reader.height() as i32);
+        let pixel_buffer = decoded_reader.into_rgba8().into_raw();
+
+        unsafe {
+            let mut texture:u32 = 0;
+            gl::GenTextures(1, &mut texture);
+            gl::BindTexture(gl::TEXTURE_2D, texture);
+            gl::TexImage2D(gl::TEXTURE_2D, 0, gl::RGBA8 as i32, width, height, 0, gl::RGBA, 
+                           gl::UNSIGNED_BYTE, pixel_buffer.as_ptr() as *const c_void);
+            gl::TexParameteri(gl::TEXTURE_2D,gl::TEXTURE_MIN_FILTER,gl::LINEAR as i32);
+            gl::TexParameteri(gl::TEXTURE_2D,gl::TEXTURE_MAG_FILTER,gl::LINEAR as i32);
+            gl::TexParameteri(gl::TEXTURE_2D,gl::TEXTURE_WRAP_S,gl::CLAMP_TO_EDGE as i32);
+            gl::TexParameteri(gl::TEXTURE_2D,gl::TEXTURE_WRAP_T,gl::CLAMP_TO_EDGE as i32);
+        }
+    }
+
 
     pub fn set_uniform(&self, shader_program:&u32, player:&Camera) {
         unsafe {
@@ -43,12 +87,10 @@ impl ShaderProgram {
     }
 
     pub fn set_all_uniforms(&mut self, player:&Camera) {
-        self.set_uniform(&self.quad, player);
         self.set_uniform(&self.chunk, player);
     }
 
     pub fn update_all_uniforms(&mut self, player:&Camera) {
-        self.update_uniform(&self.quad, player);
         self.update_uniform(&self.chunk, player);
     }
 
@@ -96,54 +138,78 @@ pub fn compile_shaders(vertex_shader_source:&str, fragment_shader_source:&str) -
     }
 }
 
-const TRIANGLE_VS:&str = "#version 330 core
-layout (location = 0) in ivec3 pos;
-
-uniform mat4 m_model;
-uniform mat4 m_view;
-uniform mat4 m_proj;
-
-void main()
-{
-    gl_Position = m_proj*m_view*m_model*vec4(pos, 1.0);
-}\0";
-
-const TRIANGLE_FS:&str = "#version 330 core
-out vec4 FragColor;
-void main()
-{
-    FragColor = vec4(0.1,0.5,0.5, 1.0f);
-}\0";
 
 const CHUNK_VS:&str = "#version 330 core
-layout (location = 0) in ivec3 pos;
-layout (location = 1) in int face_id;
+layout (location = 0) in int compressed_data;
 
 uniform mat4 m_model;
 uniform mat4 m_view;
 uniform mat4 m_proj;
 
 out vec3 color;
+out vec2 uv_coords;
+flat out int voxel_id;
+
+ivec3 pos;
+int face_id;
+
+void unpack_data(int compressed_data) {
+    int COORD_STRIDE = 6; int COORD_MASK = (1<<COORD_STRIDE)-1;
+    int FACE_ID_STRIDE = 3;
+    int VOXEL_ID_STRIDE = 4; int VOXEL_ID_MASK = (1<<VOXEL_ID_STRIDE)-1;
+
+    voxel_id = compressed_data & VOXEL_ID_MASK; compressed_data >>= VOXEL_ID_STRIDE;
+    int z = compressed_data & COORD_MASK; compressed_data >>= COORD_STRIDE;
+    int y = compressed_data & COORD_MASK; compressed_data >>= COORD_STRIDE;
+    int x = compressed_data & COORD_MASK; compressed_data >>= COORD_STRIDE;
+    face_id = compressed_data;
+    pos = ivec3(x,y,z);
+}
 
 vec3 color_generator(int n) {
     return vec3[6](
-        vec3(1,0,0), vec3(0,1,0), vec3(0,0,1),
-        vec3(0,0,0), vec3(1,1,1), vec3(1,0,1)
+        vec3(1,0,0), vec3(0,1,0), vec3(0,0,1), vec3(0,0,0), vec3(1,1,1), vec3(1,0,1)
     )[n];
 }
 
+const vec2 uv[4] = vec2[] (
+    vec2(0,0), vec2(1,0), vec2(1,1), vec2(0,1)
+);
+
+const int uv_indices[6] = int[] (
+    3, 2, 1, 1, 0, 3
+);
+
+const vec2 face_texture_offset[6] = vec2[] (
+    vec2(2,0), vec2(0,0), vec2(1,0), vec2(1,0), vec2(1,0), vec2(1,0)
+);
+
 void main()
 {
-    color = color_generator(face_id);
+    unpack_data(compressed_data);
+    uv_coords = (uv[uv_indices[gl_VertexID % 6]] + face_texture_offset[face_id]) * vec2(1/3.0,1);
     gl_Position = m_proj*m_view*m_model*vec4(pos, 1.0);
 }\0";
 
 const CHUNK_FS:&str = "#version 330 core
 in vec3 color;
+in vec2 uv_coords;
+flat in int voxel_id;
 
 out vec4 FragColor;
 
+//#define TESTING
+#ifdef TESTING
+uniform sampler2D test;
+#else
+uniform sampler2DArray tex_array;
+#endif
+
 void main()
 {
-    FragColor = vec4(color, 1.0f);
+#ifdef TESTING
+    FragColor = texture(test, uv_coords);
+#else
+    FragColor = texture(tex_array, vec3(uv_coords, voxel_id));
+#endif
 }\0";

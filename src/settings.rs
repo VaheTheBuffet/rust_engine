@@ -15,13 +15,23 @@ pub const CHUNK_VOL:i32 = CHUNK_AREA * CHUNK_SIZE;
 
 
 pub const WORLD_W:i32 = 15;
-pub const WORLD_H:i32 = 3;
+pub const WORLD_H:i32 = 2;
 pub const WORLD_A:i32 = WORLD_W * WORLD_W;
 pub const WORLD_V:i32 = WORLD_A * WORLD_H;
 
+pub const RENDER_DISTANCE:i32 = 5;
+pub const RENDER_VOL:i32 = RENDER_DISTANCE*RENDER_DISTANCE*RENDER_DISTANCE;
+
+
 #[repr(u8)]
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum VOXELS {
-    EMPTY = 0,
-    SOLID
+    EMPTY,
+    SAND,
+    GRASS,
+    DIRT,
+    COBBLESTONE,
+    SNOW,
+    LEAF,
+    WOOD
 }

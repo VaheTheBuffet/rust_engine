@@ -1,9 +1,10 @@
-use std::collections::HashMap;
-use crate::{chunk::Chunk, shader_program::ShaderProgram};
-use crate::{chunk, settings::*};
+use std::{collections::HashMap, iter::zip};
+use crate::{camera::Camera, chunk::{Chunk, ChunkMeshData}, settings::*, shader_program::ShaderProgram};
+use noise::Perlin;
+use rayon::prelude::*;
 
 pub struct World {
-    chunks:HashMap<(i32, i32, i32), Chunk>
+    chunks:HashMap<(i32,i32,i32), Chunk>
 }
 
 impl World {
@@ -12,43 +13,95 @@ impl World {
     }
 
 
-    pub fn build_chunks(&mut self) {
+    pub fn _build_chunks(&mut self) {
         for x in 0..WORLD_W {
             for z in 0..WORLD_W {
                 for y in 0..WORLD_H {
-                    self.chunks.insert((x, y, z), Chunk::new(x, y, z));
-                    self.chunks.get_mut(&(x,y,z)).unwrap().build_voxels();
+                    self.chunks.insert((x,y,z), Chunk::new(x,y,z));
+                    //self.chunks.get_mut(&(x,y,z)).unwrap().build_voxels();
                 }
             }
         }
         
-        self.build_all_meshes();
+        self._build_all_meshes();
     }
 
 
-    fn build_all_meshes(&mut self) {
+    fn chunk_build_task(&self, x:i32, y:i32, z:i32, perlin:&Perlin) -> Chunk {
+        let mut chunk = Chunk::new(x, y, z);
+        chunk.build_voxels(perlin);
+        chunk
+    }
+
+
+
+    fn mesh_build_task(&self, x:i32, y:i32, z:i32) -> ChunkMeshData {
+        let chunk_cluster = ChunkCluster::new(&self, x, y, z);
+        self.chunks.get(&(x,y,z)).unwrap().get_vertex_data(chunk_cluster)
+    }
+
+
+    fn _build_all_meshes(&mut self) {
         for x in 0..WORLD_W {
             for z in 0..WORLD_W {
                 for y in 0..WORLD_H {
-                    let chunk_cluster = ChunkCluster::new(self, x, y, z);
-                    let mesh_data = self.chunks.get(&(x,y,z)).unwrap().get_vertex_data(chunk_cluster);
-                    self.chunks.get_mut(&(x,y,z)).unwrap().build_mesh(mesh_data);
+                    self.mesh_build_task(x, y, z);
                 }
             }
         }
     }
 
 
-    pub fn draw(&self) {
-        for (_, chunk) in self.chunks.iter() {
-            chunk.draw();
+    pub fn get_voxel(&self, x:i32, y:i32, z:i32) {
+        
+    }
+
+
+    pub fn draw(&mut self, player:&Camera) {
+        self.threaded_update_visible_chunks(player);
+
+        let (px, py, pz) = (player.x as i32 / CHUNK_SIZE, player.y as i32 / CHUNK_SIZE, player.z as i32 / CHUNK_SIZE);
+        for x in px-RENDER_DISTANCE..px+RENDER_DISTANCE {
+            for y in py-RENDER_DISTANCE..py+RENDER_DISTANCE {
+                for z in pz-RENDER_DISTANCE..pz+RENDER_DISTANCE {
+                    let chunk = self.chunks.get(&(x,y,z)).expect("chunk not set before drawing");
+                    if !chunk.empty {
+                        chunk.draw();
+                    }
+                }
+            }
         }
     }
 
 
-    pub fn update(&mut self) {
-        for (_, chunk) in self.chunks.iter_mut() {
-            chunk.update();
+    pub fn threaded_update_visible_chunks(&mut self, player:&Camera) {
+        let (px, py, pz) = (player.x as i32 / CHUNK_SIZE, player.y as i32 / CHUNK_SIZE, player.z as i32 / CHUNK_SIZE);
+        let mut dirty_positions: Vec<(i32, i32, i32)> = Vec::new();
+        let mut build_positions: Vec<(i32, i32, i32)> = Vec::new();
+
+        for x in px-RENDER_DISTANCE..px+RENDER_DISTANCE {
+            for y in py-RENDER_DISTANCE..py+RENDER_DISTANCE {
+                for z in pz-RENDER_DISTANCE..pz+RENDER_DISTANCE {
+                    if let Some(chunk) = self.chunks.get(&(x,y,z)) {
+                        if chunk.dirty {
+                            dirty_positions.push((x,y,z));
+                        }                    
+                    } else {
+                        build_positions.push((x,y,z));
+                        dirty_positions.push((x,y,z));
+                    }
+                }
+            }
+        }
+
+        let perlin = Perlin::new(1);
+        let chunks: Vec<Chunk> = build_positions.par_iter().map(|(x,y,z)| {self.chunk_build_task(*x,*y,*z, &perlin)}).collect();
+        for chunk in chunks { self.chunks.insert(chunk.pos, chunk); }
+        let mesh_data:Vec<ChunkMeshData> = dirty_positions.par_iter_mut().map(|(x,y,z)| {self.mesh_build_task(*x,*y,*z)}).collect();
+        for (pos, data) in zip(dirty_positions, mesh_data) {
+            let chunk = self.chunks.get_mut(&pos).unwrap();
+            chunk.build_mesh(data);
+            chunk.dirty = false;
         }
     }
 
@@ -87,6 +140,22 @@ impl Face {
             Face::Back => (0,0,-1)
         }
     }
+
+    #[inline]
+    pub fn iter() -> [Face; 6] {
+        [Face::Top, Face::Bottom, Face::Right, Face::Left, Face::Front, Face::Back]
+    }
+
+    pub fn coords(&self) -> [[i32; 3]; 6] {
+        match self {
+            Face::Top => [[0,1,1], [1,1,1], [1,1,0], [1,1,0], [0,1,0], [0,1,1]],
+            Face::Bottom => [[0,0,0], [1,0,0], [1,0,1], [1,0,1], [0,0,1], [0,0,0]],
+            Face::Right => [[1,0,1], [1,0,0], [1,1,0], [1,1,0], [1,1,1], [1,0,1]],
+            Face::Left =>[[0,0,0], [0,0,1], [0,1,1], [0,1,1], [0,1,0], [0,0,0]],
+            Face::Front => [[0,0,1], [1,0,1], [1,1,1], [1,1,1], [0,1,1], [0,0,1]],
+            Face::Back => [[1,0,0], [0,0,0], [0,1,0], [0,1,0], [1,1,0], [1,0,0]]
+        }
+    }
 }
 
 
@@ -113,6 +182,7 @@ impl<'a> ChunkCluster<'a> {
         }
     }
 
+
     pub fn get_voxel(&self, local_x:i32, local_y:i32, local_z:i32) -> VOXELS {
         if let Some(chunk) = match (
             local_x.div_euclid(CHUNK_SIZE),
@@ -137,6 +207,7 @@ impl<'a> ChunkCluster<'a> {
             VOXELS::EMPTY
         }
     }
+
 
     pub fn is_face_visible(&self, x:i32, y:i32, z:i32, face:Face) -> bool {
         let (dx, dy, dz) = face.offset();

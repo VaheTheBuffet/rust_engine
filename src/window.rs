@@ -1,4 +1,4 @@
-use std::{os::raw::c_void};
+use std::{os::raw::c_void, ptr::null, thread::{self, Thread}, time::Duration};
 use glfw::{self, fail_on_errors, ffi::{glfwGetCursorPos, glfwGetKey, glfwGetTime, glfwSetInputMode, glfwSetWindowTitle, GLFW_CURSOR, GLFW_CURSOR_DISABLED, GLFW_PRESS, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE}, Action, Context, Key};
 use crate::{camera::{Camera, HasCamera}, scene::Scene};
 use crate::settings::*;
@@ -20,7 +20,6 @@ impl VoxelEngine {
         glfw.window_hint(glfw::WindowHint::OpenGlForwardCompat(true));
         glfw.window_hint(glfw::WindowHint::OpenGlDebugContext(false));
         glfw.window_hint(glfw::WindowHint::FocusOnShow(true));
-        //glfw.window_hint(glfw::WindowHint::DepthBits(Some(32)));
 
         let (mut window, events) = glfw.create_window(WIDTH, HEIGHT, "Voxel Engine", glfw::WindowMode::Windowed)
             .expect("Failed to create window");
@@ -42,8 +41,8 @@ impl VoxelEngine {
 
 
     pub fn init_gl(&mut self) {
-        let func = |s| {self.window.get_proc_address(s).unwrap_or(
-            self.window.get_proc_address("glActiveShaderProgram").unwrap()) as *const c_void};
+        let func = |s| {match self.window.get_proc_address(s) {Some(f) => f as _, _ => null() } };
+
         gl::load_with(func);
         unsafe{gl::Enable(gl::DEPTH_TEST);gl::Enable(gl::CULL_FACE)}
     }
@@ -78,7 +77,7 @@ impl VoxelEngine {
 
     pub fn draw(&mut self) {
         unsafe {
-            gl::ClearColor(0.2, 0.2, 0.5, 1.0);
+            gl::ClearColor(0.6, 0.8, 0.99, 1.0);
             gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
         }
     }
@@ -96,6 +95,8 @@ impl VoxelEngine {
         }
 
         while !self.window.should_close() {
+            self.draw();
+            scene.draw(&self.player);
             let now = unsafe{glfwGetTime()};
             let delta_time = now - last_update_time;
             second -= delta_time;
@@ -110,8 +111,6 @@ impl VoxelEngine {
             self.handle_events(&(delta_time as f32));
             self.player.update();
             scene.update(&self.player);
-            self.draw();
-            scene.draw();
             self.window.swap_buffers();
             last_update_time = now;
         }

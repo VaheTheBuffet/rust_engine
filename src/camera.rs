@@ -25,7 +25,7 @@ impl Camera{
             x:16.0,
             y:50.0,
             z:50.0,
-            speed:4.0,
+            speed:10.0,
             sensitivity:0.01,
             forward: [0.0, 0.0, -1.0],
             right: [1.0, 0.0, 0.0],
