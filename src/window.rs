@@ -1,10 +1,9 @@
 use std::{ptr::null};
 use glfw:: {
-    self, fail_on_errors, Action, Context, Key,
-    ffi::{
-        glfwGetCursorPos, glfwGetKey, glfwGetTime, glfwSetInputMode, glfwSetWindowTitle, 
-        GLFW_CURSOR, GLFW_CURSOR_DISABLED, GLFW_PRESS, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE
-    },
+    self, Action, Context, Key, fail_on_errors, ffi::{
+        GLFW_CURSOR, GLFW_CURSOR_DISABLED, GLFW_PRESS, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE, 
+        glfwGetCursorPos, glfwGetKey, glfwGetTime, glfwSetInputMode, glfwSetWindowTitle
+    }
 };
 use crate::{camera::{Camera, HasCamera}, scene::Scene};
 use crate::settings::*;
@@ -27,8 +26,9 @@ impl VoxelEngine {
         glfw.window_hint(glfw::WindowHint::OpenGlDebugContext(false));
         glfw.window_hint(glfw::WindowHint::FocusOnShow(true));
 
-        let (mut window, events) = glfw.create_window(WIDTH, HEIGHT, "Voxel Engine", glfw::WindowMode::Windowed)
-            .expect("Failed to create window");
+        let (mut window, events) = glfw.create_window(
+            WIDTH, HEIGHT, "Voxel Engine", glfw::WindowMode::Windowed
+        ).expect("Failed to create window");
 
         unsafe{
             glfwSetInputMode(window.window_ptr(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
@@ -65,12 +65,24 @@ impl VoxelEngine {
             }
         }
         unsafe{
-            if glfwGetKey(self.window.window_ptr(), Key::W as i32) == GLFW_PRESS {self.player.move_forward(delta_time);}
-            if glfwGetKey(self.window.window_ptr(), Key::S as i32) == GLFW_PRESS {self.player.move_backward(delta_time);}
-            if glfwGetKey(self.window.window_ptr(), Key::A as i32) == GLFW_PRESS {self.player.move_left(delta_time);}
-            if glfwGetKey(self.window.window_ptr(), Key::D as i32) == GLFW_PRESS {self.player.move_right(delta_time);}
-            if glfwGetKey(self.window.window_ptr(), Key::Q as i32) == GLFW_PRESS {self.player.move_up(delta_time);}
-            if glfwGetKey(self.window.window_ptr(), Key::E as i32) == GLFW_PRESS {self.player.move_down(delta_time);}
+            if glfwGetKey(self.window.window_ptr(), Key::W as i32) == GLFW_PRESS {
+                self.player.move_forward(delta_time);
+            }
+            if glfwGetKey(self.window.window_ptr(), Key::S as i32) == GLFW_PRESS {
+                self.player.move_backward(delta_time);
+            }
+            if glfwGetKey(self.window.window_ptr(), Key::A as i32) == GLFW_PRESS {
+                self.player.move_left(delta_time);
+            }
+            if glfwGetKey(self.window.window_ptr(), Key::D as i32) == GLFW_PRESS {
+                self.player.move_right(delta_time);
+            }
+            if glfwGetKey(self.window.window_ptr(), Key::Q as i32) == GLFW_PRESS {
+                self.player.move_up(delta_time);
+            }
+            if glfwGetKey(self.window.window_ptr(), Key::E as i32) == GLFW_PRESS {
+                self.player.move_down(delta_time);
+            }
         }
     }
 
@@ -88,26 +100,51 @@ impl VoxelEngine {
         }
     }
 
-
     pub fn run(&mut self) {
         let mut last_update_time = 0.0;
         let mut second = 1.0;
 
-        let mut scene = Scene::new();
-        scene.init(&self.player);
         let (mut x1, mut y1) = (0f64, 0f64);
         unsafe {
             glfwGetCursorPos(self.window.window_ptr(), &mut x1, &mut y1);
         }
 
+        //mesh_builder_thread
+        let cheat = self as *mut _ as u64;
+        glfw::make_context_current(None);
+        rayon::spawn(move|| {
+            let class_ptr = cheat as *mut VoxelEngine;
+
+            let func = |s| {match unsafe{&mut (*class_ptr).window}.get_proc_address(s) {Some(f) => f as _, _ => null() } };
+            gl::load_with(func);
+            unsafe{(*class_ptr).window.make_current()};
+            unsafe{gl::Enable(gl::DEPTH_TEST);gl::Enable(gl::CULL_FACE)}
+            println!("{:?}", unsafe{(*class_ptr).window.is_current()});
+
+            let mut scene = Scene::new();
+            scene.init(unsafe{&(*class_ptr).player});
+
+            loop {
+                unsafe{
+                    (*class_ptr).draw();
+                    scene.draw(&(*class_ptr).player);
+                    scene.update(&(*class_ptr).player);
+                    (*class_ptr).window.swap_buffers();
+                }
+            };
+        });
+
         while !self.window.should_close() {
-            self.draw();
-            scene.draw(&self.player);
+            //self.draw();
+            //scene.draw(&self.player);
             let now = unsafe{glfwGetTime()};
             let delta_time = now - last_update_time;
             second -= delta_time;
             if second <= 0.0 {
-                unsafe{glfwSetWindowTitle(self.window.window_ptr(), format!("{}\0", (1.0/delta_time) as i32).as_ptr() as *const _);}
+                unsafe{glfwSetWindowTitle(
+                    self.window.window_ptr(), 
+                    format!("{}\0", (1.0/delta_time) as i32).as_ptr() as *const _
+                );}
                 second = 1.0;
             }
 
@@ -116,8 +153,8 @@ impl VoxelEngine {
             self.handle_mouse_move(x1-x0, y1-y0);
             self.handle_events(&(delta_time as f32));
             self.player.update();
-            scene.update(&self.player);
-            self.window.swap_buffers();
+            //scene.update(&self.player);
+            //self.window.swap_buffers();
             last_update_time = now;
         }
 

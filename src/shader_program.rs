@@ -139,7 +139,7 @@ pub fn compile_shaders(vertex_shader_source:&str, fragment_shader_source:&str) -
 }
 
 
-const CHUNK_VS:&str = "#version 330 core
+const CHUNK_VS: &'static str = "#version 330 core
 layout (location = 0) in int compressed_data;
 
 uniform mat4 m_model;
@@ -192,7 +192,7 @@ void main()
     gl_Position = m_proj*m_view*m_model*vec4(pos, 1.0);
 }\0";
 
-const CHUNK_FS:&str = "#version 330 core
+const CHUNK_FS: &'static str = "#version 330 core
 in vec2 uv_coords;
 flat in float shading;
 flat in int voxel_id;
