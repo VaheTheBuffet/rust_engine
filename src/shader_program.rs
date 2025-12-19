@@ -117,14 +117,14 @@ pub fn compile_shaders(vertex_shader_source:&str, fragment_shader_source:&str) -
         if success != 1 {
             gl::GetShaderInfoLog(vertex_shader, 512, null::<i32>() as *mut _, vec.as_mut_ptr());
             let log = String::from_utf8(vec.iter().map(|&s| s as u8).collect());
-            panic!("{}", log.unwrap());
+            panic!("VERTEX SHADER FAILED\n{}", log.unwrap());
         }
 
         gl::GetShaderiv(fragment_shader, gl::COMPILE_STATUS, &mut success);
         if success != 1 {
             gl::GetShaderInfoLog(fragment_shader, 512, null::<i32>() as *mut _, vec.as_mut_ptr());
             let log = String::from_utf8(vec.iter().map(|&s| s as u8).collect());
-            panic!("{}", log.unwrap());
+            panic!("FRAGMENT SHADER FAILED\n{}", log.unwrap());
         }
 
         let shader_program:u32 = gl::CreateProgram();
@@ -146,8 +146,8 @@ uniform mat4 m_model;
 uniform mat4 m_view;
 uniform mat4 m_proj;
 
-out vec3 color;
 out vec2 uv_coords;
+flat out float shading;
 flat out int voxel_id;
 
 ivec3 pos;
@@ -166,9 +166,9 @@ void unpack_data(int compressed_data) {
     pos = ivec3(x,y,z);
 }
 
-vec3 color_generator(int n) {
-    return vec3[6](
-        vec3(1,0,0), vec3(0,1,0), vec3(0,0,1), vec3(0,0,0), vec3(1,1,1), vec3(1,0,1)
+float get_shading(int n) {
+    return float[6](
+        1.0, 0.4, 0.6, 0.4, 0.7, 0.5
     )[n];
 }
 
@@ -188,12 +188,13 @@ void main()
 {
     unpack_data(compressed_data);
     uv_coords = (uv[uv_indices[gl_VertexID % 6]] + face_texture_offset[face_id]) * vec2(1/3.0,1);
+    shading = get_shading(face_id);
     gl_Position = m_proj*m_view*m_model*vec4(pos, 1.0);
 }\0";
 
 const CHUNK_FS:&str = "#version 330 core
-in vec3 color;
 in vec2 uv_coords;
+flat in float shading;
 flat in int voxel_id;
 
 out vec4 FragColor;
@@ -212,4 +213,6 @@ void main()
 #else
     FragColor = texture(tex_array, vec3(uv_coords, voxel_id));
 #endif
+
+    FragColor *= shading;
 }\0";

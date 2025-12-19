@@ -1,20 +1,21 @@
 use std::ffi::c_void;
+use crate::math;
+use crate::util::Noise;
 use crate::world::{ChunkCluster, Face};
 use crate::{math::get_model, settings::*};
 use crate::shader_program::ShaderProgram;
-use noise::{NoiseFn, Perlin};
+use noise::{Perlin};
 
 static mut PROGRAM:u32 = 0;
 static mut PERLIN:Option<Perlin> = None;
 
 
 pub struct Chunk {
-    pub pos:(i32, i32, i32),
-    pub voxels:Vec<VOXELS>,
-    pub vao:Option<u32>,
-    pub vertex_count:i32,
-    pub dirty:bool,
-    pub empty:bool,
+    pub pos: (i32, i32, i32),
+    pub voxels: Vec<VOXELS>,
+    pub vao: Option<u32>,
+    pub vertex_count: i32,
+    pub status: ChunkStatus
 }
 
 impl Chunk {
@@ -27,7 +28,12 @@ impl Chunk {
 
 
     pub fn new(x:i32, y:i32, z:i32) -> Chunk {
-        Chunk{pos:(x, y, z), voxels:vec![VOXELS::EMPTY;CHUNK_VOL as usize], vao:None, vertex_count:0, dirty:true, empty:false}
+        Chunk{
+            pos:(x, y, z), 
+            voxels:vec![VOXELS::EMPTY;CHUNK_VOL as usize], 
+            vao:None, 
+            vertex_count:0, 
+            status:ChunkStatus::Empty}
     }
 
 
@@ -61,30 +67,88 @@ impl Chunk {
     }
 
 
-    pub fn build_voxels(&mut self, perlin:&Perlin) {
-        let (global_chunk_x, global_chunk_y, global_chunk_z) = (self.pos.0*CHUNK_SIZE, self.pos.1*CHUNK_SIZE, self.pos.2*CHUNK_SIZE);
+    pub fn build_voxels(&mut self, noise:&Noise) {
+        let global_pos = (
+            self.pos.0*CHUNK_SIZE, self.pos.1*CHUNK_SIZE, self.pos.2*CHUNK_SIZE
+        );
+
         for x in 0..CHUNK_SIZE {
             for z in 0..CHUNK_SIZE {
-                let global_height = CHUNK_SIZE + (perlin.get([(global_chunk_x+x) as f64 / 100.1, (global_chunk_z+z) as f64 / 100.1]) 
-                                                  * CHUNK_SIZE as f64) as i32;
-                for y in std::cmp::max(-global_chunk_y, 0)..std::cmp::min(global_height-global_chunk_y, CHUNK_SIZE) {
-                    _ = self.generate_terrain(x, y, z, global_chunk_y);
+                let mut global_height: i32 = noise.get_height(
+                    (x + global_pos.0) as f64, 
+                    (z + global_pos.2) as f64
+                );
+                global_height = if global_height > 0 {global_height} else {1};
+                for y in {
+                    std::cmp::max(-global_pos.1, 0)
+                    ..std::cmp::min(global_height-global_pos.1, CHUNK_SIZE) 
+                }{
+                    _ = self.generate_terrain((x, y, z), global_pos, global_height);
                 }
             }
         }
+        self.status = ChunkStatus::Dirty;
     }
 
 
-    pub fn generate_terrain(&mut self, x:i32, y:i32, z:i32, cy:i32) -> Result<(), ()> {
-        let gy = y+cy;
+    pub fn generate_terrain(
+        &mut self, (x,y,z):(i32, i32, i32), (cx,cy,cz):(i32, i32, i32),
+        global_height:i32
+    ) -> Result<(), ()> {
+
+        let (_, gy, _) = (cx+x,cy+y,cz+z);
         let voxel = {
-            if gy >= 50 && (cy + y) - gy < 5 {VOXELS::SNOW}
+            if cy >= 50 && y > 5 {VOXELS::SNOW}
             else if gy >= 35 && gy < 50 {VOXELS::COBBLESTONE}
-            else if gy >= 10 && gy < 35 {VOXELS::GRASS}
-            else {VOXELS::GRASS}
+            else if gy >= 10 && gy < 35 && gy == global_height-1 {VOXELS::GRASS}
+            else if gy >= 7 && gy < 10 {VOXELS::DIRT}
+            else {VOXELS::SAND}
         };
+
+        match voxel {
+            VOXELS::SAND => {
+                if gy == 0 {
+                    self.set_voxel(x, y+1, z, VOXELS::WOOD)?;
+                    self.set_voxel(x, y+2, z, VOXELS::WOOD)?;
+                    self.set_voxel(x, y+3, z, VOXELS::WOOD)?;
+                    self.set_voxel(x, y+4, z, VOXELS::WOOD)?;
+                }
+            }
+            _ => {}
+        }
+
         self.set_voxel(x, y, z, voxel)?;
         Ok(())
+    }
+
+
+    pub fn generate_entities(&self) -> Vec<(i32,i32,i32,ENTITIES)> {
+        let mut entities:Vec<(i32, i32, i32, ENTITIES)> = Vec::new();
+        let (cx,cy,cz) = (self.pos.0*CHUNK_SIZE,self.pos.1*CHUNK_SIZE,self.pos.2*CHUNK_SIZE);
+        for x in 0..CHUNK_SIZE {
+            for y in 0..CHUNK_SIZE {
+                for z in 0..CHUNK_SIZE {
+                    let voxel_global_pos = (cx+x,cy+y,cz+z);
+                    let voxel = self.voxels[(x+z*CHUNK_SIZE+y*CHUNK_AREA) as usize];
+                    self.add_entity(voxel_global_pos, voxel, &mut entities);
+                }
+            }
+        }
+        entities
+    }
+
+
+    pub fn add_entity(
+        &self, (x,y,z):(i32,i32,i32), voxel:VOXELS, entities:&mut Vec<(i32,i32,i32,ENTITIES)>
+    ) {
+        match voxel {
+            VOXELS::GRASS => {
+                if math::HASH[((x*3+z*17) as usize)%math::HASH.len()] < 1 {
+                    entities.push((x,y,z,ENTITIES::SEED));
+                }
+            }
+            _ => {}
+        }
     }
 
 
@@ -137,6 +201,7 @@ impl Chunk {
 
         let (len, vertex_data) = (chunk_mesh_data.vertices.len(), chunk_mesh_data.vertices);
         self.vertex_count = len as i32;
+        self.status = if len > 0 {ChunkStatus::Clean} else {ChunkStatus::Empty};
 
         unsafe {
             gl::GenVertexArrays(1, &mut vao);
@@ -183,4 +248,14 @@ impl ChunkMeshData {
     pub fn new(vertices:Vec<u32>) -> Self {
         ChunkMeshData{vertices}
     }
+}
+
+
+#[derive(PartialEq, Debug)]
+#[repr(u8)]
+pub enum ChunkStatus {
+    Empty,
+    Terrain,
+    Dirty,
+    Clean,
 }

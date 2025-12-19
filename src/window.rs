@@ -1,5 +1,11 @@
-use std::{os::raw::c_void, ptr::null, thread::{self, Thread}, time::Duration};
-use glfw::{self, fail_on_errors, ffi::{glfwGetCursorPos, glfwGetKey, glfwGetTime, glfwSetInputMode, glfwSetWindowTitle, GLFW_CURSOR, GLFW_CURSOR_DISABLED, GLFW_PRESS, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE}, Action, Context, Key};
+use std::{ptr::null};
+use glfw:: {
+    self, fail_on_errors, Action, Context, Key,
+    ffi::{
+        glfwGetCursorPos, glfwGetKey, glfwGetTime, glfwSetInputMode, glfwSetWindowTitle, 
+        GLFW_CURSOR, GLFW_CURSOR_DISABLED, GLFW_PRESS, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE
+    },
+};
 use crate::{camera::{Camera, HasCamera}, scene::Scene};
 use crate::settings::*;
 

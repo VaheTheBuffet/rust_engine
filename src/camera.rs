@@ -9,6 +9,9 @@ pub struct Camera {
     pub x:f32,
     pub y:f32,
     pub z:f32,
+    pub chunk_x:i32,
+    pub chunk_y:i32,
+    pub chunk_z:i32,
     pub speed:f32,
     pub sensitivity:f32,
     pub forward:[f32; 3],
@@ -22,9 +25,12 @@ impl Camera{
         Camera {
             pitch:0.0,
             yaw:-H_PI,
-            x:16.0,
-            y:50.0,
-            z:50.0,
+            x:START_X,
+            y:START_Y,
+            z:START_Z,
+            chunk_x:START_CHUNK_X,
+            chunk_y:START_CHUNK_Y,
+            chunk_z:START_CHUNK_Z,
             speed:10.0,
             sensitivity:0.01,
             forward: [0.0, 0.0, -1.0],
@@ -126,6 +132,10 @@ impl HasCamera for Camera {
         self.update_forward();
         self.update_right();
         self.update_up();
+
+        self.chunk_x = (self.x * INV_CHUNK_SIZE).floor() as i32;
+        self.chunk_y = (self.y * INV_CHUNK_SIZE).floor() as i32;
+        self.chunk_z = (self.z * INV_CHUNK_SIZE).floor() as i32;
     }
 
     fn get_view_mat(&self) -> [f32;16] {

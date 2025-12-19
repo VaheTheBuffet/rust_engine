@@ -1,38 +1,40 @@
+use crate::{
+    camera::Camera, 
+    chunk::{Chunk, ChunkMeshData, ChunkStatus}, 
+    math, 
+    settings::*, 
+    shader_program::ShaderProgram, 
+    util::{self, Noise, render_range}
+};
 use std::{collections::HashMap, iter::zip};
-use crate::{camera::Camera, chunk::{Chunk, ChunkMeshData}, settings::*, shader_program::ShaderProgram};
-use noise::Perlin;
 use rayon::prelude::*;
 
+
 pub struct World {
-    chunks:HashMap<(i32,i32,i32), Chunk>
+    chunks:HashMap<(i32,i32,i32), Chunk>,
+    noise: Noise
+
 }
 
 impl World {
     pub fn new() -> Self {
-        Self{chunks:HashMap::new()}
+        let noise = Noise::new(SEED);
+        Self{chunks:HashMap::new(), noise}
     }
 
 
-    pub fn _build_chunks(&mut self) {
-        for x in 0..WORLD_W {
-            for z in 0..WORLD_W {
-                for y in 0..WORLD_H {
-                    self.chunks.insert((x,y,z), Chunk::new(x,y,z));
-                    //self.chunks.get_mut(&(x,y,z)).unwrap().build_voxels();
-                }
-            }
-        }
-        
-        self._build_all_meshes();
-    }
-
-
-    fn chunk_build_task(&self, x:i32, y:i32, z:i32, perlin:&Perlin) -> Chunk {
+    fn chunk_build_task(&self, (x,y,z):(i32,i32,i32), noise:&Noise) -> Chunk {
         let mut chunk = Chunk::new(x, y, z);
-        chunk.build_voxels(perlin);
+        chunk.build_voxels(noise);
+        chunk.status = ChunkStatus::Terrain;
+
         chunk
     }
 
+
+    fn entity_build_task(&self, (x,y,z):(i32,i32,i32)) -> Vec<(i32,i32,i32,ENTITIES)> {
+        self.chunks.get(&(x,y,z)).unwrap().generate_entities()
+    }
 
 
     fn mesh_build_task(&self, x:i32, y:i32, z:i32) -> ChunkMeshData {
@@ -41,67 +43,124 @@ impl World {
     }
 
 
-    fn _build_all_meshes(&mut self) {
-        for x in 0..WORLD_W {
-            for z in 0..WORLD_W {
-                for y in 0..WORLD_H {
-                    self.mesh_build_task(x, y, z);
-                }
-            }
-        }
+    pub fn get_voxel(&self, global_x:i32, global_y:i32, global_z:i32) -> VOXELS{
+        let cx = (global_x as f32 * INV_CHUNK_SIZE).floor() as i32;
+        let cy = (global_y as f32 * INV_CHUNK_SIZE).floor() as i32;
+        let cz = (global_z as f32 * INV_CHUNK_SIZE).floor() as i32;
+        let lx = global_x % CHUNK_SIZE;
+        let ly = global_y % CHUNK_SIZE;
+        let lz = global_z % CHUNK_SIZE;
+
+        self.chunks.get(&(cx,cy,cz)).unwrap().get_voxel(lx, ly, lz)
     }
 
 
-    pub fn get_voxel(&self, x:i32, y:i32, z:i32) {
-        
+    pub fn set_voxel(&mut self, global_x:i32, global_y:i32, global_z:i32, voxel:VOXELS) -> Result<(), ()> {
+        let cx = (global_x as f32 * INV_CHUNK_SIZE).floor() as i32;
+        let cy = (global_y as f32 * INV_CHUNK_SIZE).floor() as i32;
+        let cz = (global_z as f32 * INV_CHUNK_SIZE).floor() as i32;
+        let lx = global_x.rem_euclid(CHUNK_SIZE);
+        let ly = global_y.rem_euclid(CHUNK_SIZE);
+        let lz = global_z.rem_euclid(CHUNK_SIZE);
+
+        self.chunks.get_mut(&(cx,cy,cz)).expect(&format!(
+            "no chunk at {}, {}, {}\n", cx, cy, cz
+        )).set_voxel(lx, ly, lz, voxel)
     }
 
 
     pub fn draw(&mut self, player:&Camera) {
+        let time = std::time::Instant::now();
+        static mut AVERAGE:std::time::Duration = std::time::Duration::from_secs(0);
+        static mut N:f32 = 0.0;
         self.threaded_update_visible_chunks(player);
 
-        let (px, py, pz) = (player.x as i32 / CHUNK_SIZE, player.y as i32 / CHUNK_SIZE, player.z as i32 / CHUNK_SIZE);
-        for x in px-RENDER_DISTANCE..px+RENDER_DISTANCE {
-            for y in py-RENDER_DISTANCE..py+RENDER_DISTANCE {
-                for z in pz-RENDER_DISTANCE..pz+RENDER_DISTANCE {
+        for x in player.chunk_x-RENDER_DISTANCE..player.chunk_x+RENDER_DISTANCE+1 {
+            for y in player.chunk_y-RENDER_DISTANCE..player.chunk_y+RENDER_DISTANCE+1 {
+                for z in player.chunk_z-RENDER_DISTANCE..player.chunk_z+RENDER_DISTANCE+1 {
                     let chunk = self.chunks.get(&(x,y,z)).expect("chunk not set before drawing");
-                    if !chunk.empty {
+                    if chunk.status == ChunkStatus::Clean {
                         chunk.draw();
-                    }
+                    } 
                 }
             }
         }
+
+        print!("{:?} {:?} {}\r", unsafe{AVERAGE}, time.elapsed(), unsafe{N});
+        unsafe{
+            N += 1.0;
+            AVERAGE = AVERAGE.mul_f32(1.0-2.0/(1.0+N)) + time.elapsed().mul_f32(2.0/(1.0+N));
+        };
+    }
+
+
+    pub fn promote_chunks(&mut self, player:&Camera) -> (
+        Vec<(i32, i32, i32)>, Vec<(i32, i32, i32)>, Vec<(i32, i32, i32)>
+    ) {
+        let (px, py, pz) = (player.chunk_x, player.chunk_y, player.chunk_z);
+        let dirty_positions: Vec<_> = render_range((px,py,pz)).filter(|&pos| {
+            if let Some(chunk) = self.chunks.get(&pos) {
+                match chunk.status {
+                    ChunkStatus::Dirty => {
+                        true
+                    }
+                    ChunkStatus::Terrain => {
+                        true
+                    }
+                    _ => false
+                }
+            } else {
+                true
+            }
+        }).collect();
+
+        let mut build_positions: Vec<_> = render_range((px,py,pz)).filter(|&pos| {
+            if let None = self.chunks.get(&(pos)) {true} else {false}
+        }).collect();
+
+        let terrain_positions: Vec<_> = render_range((px,py,pz)).filter(|&pos| {
+            if let Some(chunk) = self.chunks.get(&pos) {
+                match chunk.status {
+                    ChunkStatus::Terrain => {
+                        true
+                    }
+                    _ => false
+                }
+            } else {
+                true
+            }
+        }).collect();
+
+        //handle edge chunks
+        build_positions.extend(util::border_range((px,py,pz)).filter(|&pos| {
+            if let None = self.chunks.get(&pos) {true} else {false}
+        }).collect::<Vec<_>>());
+        (build_positions, terrain_positions, dirty_positions)
     }
 
 
     pub fn threaded_update_visible_chunks(&mut self, player:&Camera) {
-        let (px, py, pz) = (player.x as i32 / CHUNK_SIZE, player.y as i32 / CHUNK_SIZE, player.z as i32 / CHUNK_SIZE);
-        let mut dirty_positions: Vec<(i32, i32, i32)> = Vec::new();
-        let mut build_positions: Vec<(i32, i32, i32)> = Vec::new();
+        let (build_positions, terrain_positions, dirty_positions) = self.promote_chunks(player);
 
-        for x in px-RENDER_DISTANCE..px+RENDER_DISTANCE {
-            for y in py-RENDER_DISTANCE..py+RENDER_DISTANCE {
-                for z in pz-RENDER_DISTANCE..pz+RENDER_DISTANCE {
-                    if let Some(chunk) = self.chunks.get(&(x,y,z)) {
-                        if chunk.dirty {
-                            dirty_positions.push((x,y,z));
-                        }                    
-                    } else {
-                        build_positions.push((x,y,z));
-                        dirty_positions.push((x,y,z));
-                    }
-                }
-            }
-        }
+        //build the chunks + first pass of terrain generation
+        let new_chunks: Vec<_> = build_positions.par_iter().map(
+            |(x,y,z)| {self.chunk_build_task((*x,*y,*z),&self.noise)}
+        ).collect();
+        for chunk in new_chunks {self.chunks.insert(chunk.pos, chunk);}
 
-        let perlin = Perlin::new(1);
-        let chunks: Vec<Chunk> = build_positions.par_iter().map(|(x,y,z)| {self.chunk_build_task(*x,*y,*z, &perlin)}).collect();
-        for chunk in chunks { self.chunks.insert(chunk.pos, chunk); }
-        let mesh_data:Vec<ChunkMeshData> = dirty_positions.par_iter_mut().map(|(x,y,z)| {self.mesh_build_task(*x,*y,*z)}).collect();
+        //second pass of terrain generation
+        let entities: Vec<_> = terrain_positions.par_iter().map(
+            |pos| {self.entity_build_task(*pos)}
+        ).collect();
+        self.decorate(entities).expect("entity generation failed");
+
+        let mesh_data: Vec<ChunkMeshData> = dirty_positions.par_iter().map(
+            |(x,y,z)| {self.mesh_build_task(*x,*y,*z)}
+        ).collect();
+
         for (pos, data) in zip(dirty_positions, mesh_data) {
             let chunk = self.chunks.get_mut(&pos).unwrap();
             chunk.build_mesh(data);
-            chunk.dirty = false;
         }
     }
 
@@ -110,6 +169,45 @@ impl World {
         Chunk::init(shader_program);
     }
 
+
+    pub fn build_tree_at(&mut self, (x,y,z):(i32,i32,i32)) -> Result<(), ()> {
+        static HASH_LEN:usize = math::HASH.len();
+        let key1 = (x*13+y*3+z*3) as usize % HASH_LEN;
+
+        let height = math::HASH[key1].rem_euclid(4) + 4;
+        for ty in 0..height {
+            self.set_voxel(x,y+ty,z, VOXELS::WOOD)?;
+        }
+
+        self.set_voxel(x, y+height, z, VOXELS::LEAF)?;
+
+        for ty in 0..=3 {
+            let key2 = (x*5+ty*11+z*13) as usize %HASH_LEN;
+            let stride = (3-ty)+math::HASH[key2] % 3;
+            for tx in -stride..=stride {
+                for tz in -stride..=stride {
+                    self.set_voxel(x+tx, y+height+ty, z+tz, VOXELS::LEAF)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+
+    pub fn decorate(&mut self, entities: Vec<Vec<(i32, i32, i32, ENTITIES)>>) -> Result<(), ()> {
+        for chunk in entities {
+            for (x,y,z,entity) in chunk {
+                match entity {
+                    ENTITIES::SEED => {
+                        self.build_tree_at((x,y,z))?;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 
@@ -213,4 +311,24 @@ impl<'a> ChunkCluster<'a> {
         let (dx, dy, dz) = face.offset();
         self.get_voxel(x+dx, y+dy, z+dz) == VOXELS::EMPTY
     }
+}
+
+fn test() {
+    let v = vec![1,2,3];
+    std::thread::scope(|s| {
+        s.spawn(|| {
+            let a = rayon::ThreadPoolBuilder::new().num_threads(22).build().unwrap();
+            a.install(|| println!("pool 1"));
+        });
+
+        s.spawn(|| {
+            let a = rayon::ThreadPoolBuilder::new().num_threads(22).build().unwrap();
+            a.install(|| println!("pool 2"));
+        });
+
+        s.spawn(|| {
+            let a = rayon::ThreadPoolBuilder::new().num_threads(22).build().unwrap();
+            a.install(|| println!("pool 3"));
+        });
+    });
 }
