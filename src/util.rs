@@ -1,5 +1,3 @@
-use std::ops::Range;
-
 use noise::{NoiseFn, Perlin};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use crate::settings::*;
@@ -46,19 +44,19 @@ pub fn border_range((px,py,pz):(i32,i32,i32)) -> impl ParallelIterator<Item = (i
                 (px+t1,py+t2,pz-RENDER_DISTANCE-1), (px+t1,py+t2,pz+RENDER_DISTANCE+1)
             ]
         })
-    }).into_par_iter()
+    })
 } 
 
 
 #[inline(always)]
-pub fn outer_border_range((px,py,pz):(i32,i32,i32)) -> impl ParallelIterator<Item = (i32,i32,i32)> {
-    (-RENDER_DISTANCE-2..=RENDER_DISTANCE+2).into_par_iter().flat_map(move |t1| {
-        (-RENDER_DISTANCE-2..=RENDER_DISTANCE+2).into_par_iter().flat_map(move |t2| {
+pub fn _outer_border_range((px,py,pz):(i32,i32,i32)) -> impl Iterator<Item = (i32,i32,i32)> {
+    (-RENDER_DISTANCE-2..=RENDER_DISTANCE+2).flat_map(move |t1| {
+        (-RENDER_DISTANCE-2..=RENDER_DISTANCE+2).flat_map(move |t2| {
             [
                 (px-RENDER_DISTANCE-2,py+t1,pz+t2), (px+RENDER_DISTANCE+2,py+t1,pz+t2),
                 (px+t1,py-RENDER_DISTANCE-2,pz+t2), (px+t1,py+RENDER_DISTANCE+2,pz+t2),
                 (px+t1,py+t2,pz-RENDER_DISTANCE-2), (px+t1,py+t2,pz+RENDER_DISTANCE+2)
             ]
         })
-    }).into_par_iter()
+    })
 } 

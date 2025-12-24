@@ -47,7 +47,9 @@ impl VoxelEngine {
 
 
     pub fn init_gl(&mut self) {
-        let func = |s| {match self.window.get_proc_address(s) {Some(f) => f as _, _ => null() } };
+        let func = |s| {
+            match self.window.get_proc_address(s) {Some(f) => f as _, _ => null()} 
+        };
 
         gl::load_with(func);
         unsafe{gl::Enable(gl::DEPTH_TEST);gl::Enable(gl::CULL_FACE)}
@@ -109,34 +111,24 @@ impl VoxelEngine {
             glfwGetCursorPos(self.window.window_ptr(), &mut x1, &mut y1);
         }
 
+        let mut scene = Scene::new();
+
         //mesh_builder_thread
         let cheat = self as *mut _ as u64;
-        glfw::make_context_current(None);
-        rayon::spawn(move|| {
+        let cheat2 = &mut scene as *mut _ as u64;
+        std::thread::spawn(move|| {
             let class_ptr = cheat as *mut VoxelEngine;
-
-            let func = |s| {match unsafe{&mut (*class_ptr).window}.get_proc_address(s) {Some(f) => f as _, _ => null() } };
-            gl::load_with(func);
-            unsafe{(*class_ptr).window.make_current()};
-            unsafe{gl::Enable(gl::DEPTH_TEST);gl::Enable(gl::CULL_FACE)}
-            println!("{:?}", unsafe{(*class_ptr).window.is_current()});
-
-            let mut scene = Scene::new();
-            scene.init(unsafe{&(*class_ptr).player});
-
+            let scene_ptr = cheat2 as *mut Scene;
             loop {
                 unsafe{
-                    (*class_ptr).draw();
-                    scene.draw(&(*class_ptr).player);
-                    scene.update(&(*class_ptr).player);
-                    (*class_ptr).window.swap_buffers();
+                    (*scene_ptr).mesh_builder_thread(&(*class_ptr).player);
                 }
-            };
+            }
         });
 
         while !self.window.should_close() {
-            //self.draw();
-            //scene.draw(&self.player);
+            self.draw();
+            scene.draw(&self.player);
             let now = unsafe{glfwGetTime()};
             let delta_time = now - last_update_time;
             second -= delta_time;
@@ -153,8 +145,8 @@ impl VoxelEngine {
             self.handle_mouse_move(x1-x0, y1-y0);
             self.handle_events(&(delta_time as f32));
             self.player.update();
-            //scene.update(&self.player);
-            //self.window.swap_buffers();
+            scene.update(&self.player);
+            self.window.swap_buffers();
             last_update_time = now;
         }
 

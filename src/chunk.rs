@@ -37,16 +37,18 @@ impl Chunk {
     }
 
 
+    #[inline(always)]
     pub fn get_voxel(&self, x:i32, y:i32, z:i32) -> VOXELS {
         self.voxels[(x+z*CHUNK_SIZE+y*CHUNK_AREA) as usize]
     }
 
 
     pub fn set_voxel(&mut self, x:i32, y:i32, z:i32, voxel:VOXELS) -> Result<(), ()> {
+        self.status = ChunkStatus::Dirty;
         if x >= 0 && x < CHUNK_SIZE && y >= 0 && y < CHUNK_SIZE && z >= 0 && z < CHUNK_SIZE {
             self.voxels[(x+z*CHUNK_SIZE+y*CHUNK_AREA) as usize] = voxel;
             Ok(())
-        }else {
+        } else {
             Err(())
         }
     }
@@ -54,11 +56,13 @@ impl Chunk {
 
     pub fn draw(&self) {
         unsafe {
-            gl::UseProgram(PROGRAM);
-            let m_model = gl::GetUniformLocation(PROGRAM, "m_model\0" as *const _ as *const i8);
-            gl::UniformMatrix4fv(m_model, 1, 1, get_model(self.pos).as_ptr());
-            gl::BindVertexArray(self.vao.unwrap());
-            gl::DrawArrays(gl::TRIANGLES, 0, self.vertex_count);
+            if let Some(vao) = self.vao {
+                gl::UseProgram(PROGRAM);
+                let m_model = gl::GetUniformLocation(PROGRAM, "m_model\0" as *const _ as *const i8);
+                gl::UniformMatrix4fv(m_model, 1, 1, get_model(self.pos).as_ptr());
+                gl::BindVertexArray(vao);
+                gl::DrawArrays(gl::TRIANGLES, 0, self.vertex_count);
+            }
         }
     }
 
@@ -87,7 +91,9 @@ impl Chunk {
                 }
             }
         }
-        self.status = ChunkStatus::Dirty;
+        self.status = if self.voxels.iter().all(|v| *v == VOXELS::EMPTY) {
+            ChunkStatus::Empty
+        } else {ChunkStatus::Dirty}
     }
 
 
@@ -154,33 +160,192 @@ impl Chunk {
 
     pub fn get_vertex_data(&self, chunk_cluster:ChunkCluster) -> ChunkMeshData {
         let mut vertex_data: Vec<u32> = Vec::new();
+        if self.status == ChunkStatus::Empty {
+            return ChunkMeshData::new(self.pos, vertex_data)
+        }
 
-        for x in 0..CHUNK_SIZE {
-            for z in 0..CHUNK_SIZE {
-                for y in 0..CHUNK_SIZE {
+        //face id order
+        let mut mask_0: Vec<u64> = vec![0;CHUNK_AREA as usize];
+        let mut mask_1: Vec<u64> = vec![0;CHUNK_AREA as usize];
+        let mut mask_2: Vec<u64> = vec![0;CHUNK_AREA as usize];
+        let mut mask_3: Vec<u64> = vec![0;CHUNK_AREA as usize];
+        let mut mask_4: Vec<u64> = vec![0;CHUNK_AREA as usize];
+        let mut mask_5: Vec<u64> = vec![0;CHUNK_AREA as usize];
 
-                    let voxel_id = self.get_voxel(x, y, z);
-                    if voxel_id == VOXELS::EMPTY {continue;}
-
-                    for face in Face::iter() {
-                        if chunk_cluster.is_face_visible(x, y, z, face) {
-                            for coord in face.coords() {
-                                let (vertex_x, vertex_y, vertex_z) = (x + coord[0], y + coord[1], z + coord[2]);
-                                vertex_data.push(self.compress_data(vertex_x, vertex_y, vertex_z, face, voxel_id));
-                            }
-                        }
-                    }
+        for a in 0..CHUNK_SIZE {
+            for b in 0..CHUNK_SIZE {
+                mask_0[(a + b * CHUNK_SIZE) as usize] |= (chunk_cluster.get_voxel(a,-1,b) != VOXELS::EMPTY) as u64;
+                mask_1[(a + b * CHUNK_SIZE) as usize] |= (chunk_cluster.get_voxel(a,-1,b) != VOXELS::EMPTY) as u64;
+                mask_2[(a + b * CHUNK_SIZE) as usize] |= (chunk_cluster.get_voxel(-1,a,b) != VOXELS::EMPTY) as u64;
+                mask_3[(a + b * CHUNK_SIZE) as usize] |= (chunk_cluster.get_voxel(-1,a,b) != VOXELS::EMPTY) as u64;
+                mask_4[(a + b * CHUNK_SIZE) as usize] |= (chunk_cluster.get_voxel(a,b,-1) != VOXELS::EMPTY) as u64;
+                mask_5[(a + b * CHUNK_SIZE) as usize] |= (chunk_cluster.get_voxel(a,b,-1) != VOXELS::EMPTY) as u64;
+                for t in 0..CHUNK_SIZE {
+                    mask_0[(a + b * CHUNK_SIZE) as usize] |= ((self.get_voxel(a,t,b) != VOXELS::EMPTY) as u64) << t+1;
+                    mask_1[(a + b * CHUNK_SIZE) as usize] |= ((self.get_voxel(a,t,b) != VOXELS::EMPTY) as u64) << t+1;
+                    mask_2[(a + b * CHUNK_SIZE) as usize] |= ((self.get_voxel(t,a,b) != VOXELS::EMPTY) as u64) << t+1;
+                    mask_3[(a + b * CHUNK_SIZE) as usize] |= ((self.get_voxel(t,a,b) != VOXELS::EMPTY) as u64) << t+1;
+                    mask_4[(a + b * CHUNK_SIZE) as usize] |= ((self.get_voxel(a,b,t) != VOXELS::EMPTY) as u64) << t+1;
+                    mask_5[(a + b * CHUNK_SIZE) as usize] |= ((self.get_voxel(a,b,t) != VOXELS::EMPTY) as u64) << t+1;
                 }
+                mask_0[(a + b * CHUNK_SIZE) as usize] |= ((chunk_cluster.get_voxel(a,CHUNK_SIZE,b) != VOXELS::EMPTY) as u64) << 33;
+                mask_1[(a + b * CHUNK_SIZE) as usize] |= ((chunk_cluster.get_voxel(a,CHUNK_SIZE,b) != VOXELS::EMPTY) as u64) << 33;
+                mask_2[(a + b * CHUNK_SIZE) as usize] |= ((chunk_cluster.get_voxel(CHUNK_SIZE,a,b) != VOXELS::EMPTY) as u64) << 33;
+                mask_3[(a + b * CHUNK_SIZE) as usize] |= ((chunk_cluster.get_voxel(CHUNK_SIZE,a,b) != VOXELS::EMPTY) as u64) << 33;
+                mask_4[(a + b * CHUNK_SIZE) as usize] |= ((chunk_cluster.get_voxel(a,b,CHUNK_SIZE) != VOXELS::EMPTY) as u64) << 33;
+                mask_5[(a + b * CHUNK_SIZE) as usize] |= ((chunk_cluster.get_voxel(a,b,CHUNK_SIZE) != VOXELS::EMPTY) as u64) << 33;
             }
         }
 
-        ChunkMeshData::new(vertex_data)
+        for mask in [mask_0.iter_mut(), mask_2.iter_mut(), mask_4.iter_mut()] {
+            for row in mask {
+                *row = (!*row >> 1) & *row;
+                *row >>= 1;
+                *row &= 0xFFFFFFFF;
+            }
+        }
+
+        for mask in [mask_1.iter_mut(), mask_3.iter_mut(), mask_5.iter_mut()] {
+            for row in mask {
+                *row = (!*row << 1) & *row;
+                *row >>= 1;
+                *row &= 0xFFFFFFFF;
+            }
+        }
+
+        //for mask in [
+            //&mut mask_0, &mut mask_1, &mut mask_2, 
+            //&mut mask_3, &mut mask_4, &mut mask_5 
+            //{l}] {
+        //}
+
+        vertex_data.extend(mask_0.iter().enumerate().flat_map(|(i, &(mut row))| {
+            let mut res = Vec::<u32>::new();
+            let (mut x, mut y, mut z); y = 0;
+            while row > 0 {
+                x = (i & 0x1F) as i32;
+                let r = row.trailing_zeros();
+                y += r as i32;
+                z = (i >> 5) as i32;
+                let voxel = self.get_voxel(x, y, z);
+                res.push(self.compress_data(x, y+1, z+1, Face::Top, voxel));
+                res.push(self.compress_data(x+1, y+1, z+1, Face::Top, voxel));
+                res.push(self.compress_data(x+1, y+1, z, Face::Top, voxel));
+                res.push(self.compress_data(x+1, y+1, z, Face::Top, voxel));
+                res.push(self.compress_data(x, y+1, z, Face::Top, voxel));
+                res.push(self.compress_data(x, y+1, z+1, Face::Top, voxel));
+                row >>= r; row >>= 1; y += 1;
+            }
+            res
+        }));
+
+        vertex_data.extend(mask_1.iter().enumerate().flat_map(|(i, &(mut row))| {
+            let mut res = Vec::<u32>::new();
+            let (mut x, mut y, mut z); y = 0;
+            while row > 0 {
+                x = (i & 0x1F) as i32;
+                let r = row.trailing_zeros();
+                y += r as i32;
+                z = (i >> 5) as i32;
+                let voxel = self.get_voxel(x, y, z);
+                res.push(self.compress_data(x, y, z, Face::Bottom, voxel));
+                res.push(self.compress_data(x+1, y, z, Face::Bottom, voxel));
+                res.push(self.compress_data(x+1, y, z+1, Face::Bottom, voxel));
+                res.push(self.compress_data(x+1, y, z+1, Face::Bottom, voxel));
+                res.push(self.compress_data(x, y, z+1, Face::Bottom, voxel));
+                res.push(self.compress_data(x, y, z, Face::Bottom, voxel));
+                row >>= r; row >>= 1; y += 1;
+            }
+            res
+        }));
+
+        vertex_data.extend(mask_2.iter().enumerate().flat_map(|(i, &(mut row))| {
+            let mut res = Vec::<u32>::new();
+            let (mut x, mut y, mut z); x = 0;
+            while row > 0 {
+                let r = row.trailing_zeros();
+                x += r as i32;
+                y = (i & 0x1F) as i32;
+                z = (i >> 5) as i32;
+                let voxel = self.get_voxel(x, y, z);
+                res.push(self.compress_data(x+1, y, z+1, Face::Right, voxel));
+                res.push(self.compress_data(x+1, y, z, Face::Right, voxel));
+                res.push(self.compress_data(x+1, y+1, z, Face::Right, voxel));
+                res.push(self.compress_data(x+1, y+1, z, Face::Right, voxel));
+                res.push(self.compress_data(x+1, y+1, z+1, Face::Right, voxel));
+                res.push(self.compress_data(x+1, y, z+1, Face::Right, voxel));
+                row >>= r; row >>= 1; x+=1;
+            }
+            res
+        }));
+
+        vertex_data.extend(mask_3.iter().enumerate().flat_map(|(i, &(mut row))| {
+            let mut res = Vec::<u32>::new();
+            let (mut x, mut y, mut z); x = 0;
+            while row > 0 {
+                let r = row.trailing_zeros();
+                x += r as i32;
+                y = (i & 0x1F) as i32;
+                z = (i >> 5) as i32;
+                let voxel = self.get_voxel(x, y, z);
+                res.push(self.compress_data(x, y, z, Face::Left, voxel));
+                res.push(self.compress_data(x, y, z+1, Face::Left, voxel));
+                res.push(self.compress_data(x, y+1, z+1, Face::Left, voxel));
+                res.push(self.compress_data(x, y+1, z+1, Face::Left, voxel));
+                res.push(self.compress_data(x, y+1, z, Face::Left, voxel));
+                res.push(self.compress_data(x, y, z, Face::Left, voxel));
+                row >>= r; row >>= 1; x+=1;
+            }
+            res
+        }));
+
+        vertex_data.extend(mask_4.iter().enumerate().flat_map(|(i, &(mut row))| {
+            let mut res = Vec::<u32>::new();
+            let (mut x, mut y, mut z); z = 0;
+            while row > 0 {
+                let r = row.trailing_zeros();
+                x = (i & 0x1F) as i32;
+                y = (i >> 5) as i32;
+                z += r as i32;
+                let voxel = self.get_voxel(x, y, z);
+                res.push(self.compress_data(x, y, z+1, Face::Front, voxel));
+                res.push(self.compress_data(x+1, y, z+1, Face::Front, voxel));
+                res.push(self.compress_data(x+1, y+1, z+1, Face::Front, voxel));
+                res.push(self.compress_data(x+1, y+1, z+1, Face::Front, voxel));
+                res.push(self.compress_data(x, y+1, z+1, Face::Front, voxel));
+                res.push(self.compress_data(x, y, z+1, Face::Front, voxel));
+                row >>= r; row >>= 1; z+=1;
+            }
+            res
+        }));
+
+        vertex_data.extend(mask_5.iter().enumerate().flat_map(|(i, &(mut row))| {
+            let mut res = Vec::<u32>::new();
+            let (mut x, mut y, mut z); z = 0;
+            while row > 0 {
+                let r = row.trailing_zeros();
+                x = (i & 0x1F) as i32;
+                y = (i >> 5) as i32;
+                z += row.trailing_zeros() as i32;
+                let voxel = self.get_voxel(x, y, z);
+                res.push(self.compress_data(x+1, y, z, Face::Back, voxel));
+                res.push(self.compress_data(x, y, z, Face::Back, voxel));
+                res.push(self.compress_data(x, y+1, z, Face::Back, voxel));
+                res.push(self.compress_data(x, y+1, z, Face::Back, voxel));
+                res.push(self.compress_data(x+1, y+1, z, Face::Back, voxel));
+                res.push(self.compress_data(x+1, y, z, Face::Back, voxel));
+                row >>= r; row >>= 1; z+=1;
+            }
+            res
+        }));
+        
+        ChunkMeshData::new(self.pos, vertex_data)
     }
 
 
     pub fn compress_data(&self, x:i32, y:i32, z:i32, face:Face, voxel_id:VOXELS) -> u32 {
         static COORD_STRIDE:u8 = 6;
-        static FACE_ID_STRIDE:u8 = 3;
+        //static FACE_ID_STRIDE:u8 = 3;
         static VOXEL_ID_STRIDE:u8 = 4;
 
         let mut res:u32 = 0;
@@ -219,34 +384,17 @@ impl Chunk {
         self.vao = Some(vao);
         (len as i32, vao)
     }
-
-
-    fn get_face_vertices(&self, x:i32, y:i32, z:i32, face:Face) -> Vec<i32> {
-        static INDICES:[[i32;4];8] = [
-            [0,0,1,0], [1,0,1,0], [1,1,1,0], [0,1,1,0],
-            [1,0,0,0], [0,0,0,0], [0,1,0,0], [1,1,0,0]
-        ];
-
-        let face_indices = match face {
-            Face::Top => [3,2,7,7,6,3],
-            Face::Bottom => [5,4,1,1,0,5],
-            Face::Right => [1,4,7,7,2,1],
-            Face::Left => [5,0,3,3,6,5],
-            Face::Front => [0,1,2,2,3,0],
-            Face::Back => [4,5,6,6,7,4]
-        };
-        face_indices.iter().flat_map(|i| INDICES[*i as usize].iter().enumerate().map(|(idx, dr)| [x,y,z,face.id()][idx] + *dr)).collect()
-    }
 }
 
 
 pub struct ChunkMeshData {
-    vertices:Vec<u32>
+    pub pos:(i32, i32, i32),
+    pub vertices:Vec<u32>
 }
 
 impl ChunkMeshData {
-    pub fn new(vertices:Vec<u32>) -> Self {
-        ChunkMeshData{vertices}
+    pub fn new(pos: (i32, i32, i32), vertices:Vec<u32>) -> Self {
+        ChunkMeshData{pos, vertices}
     }
 }
 
