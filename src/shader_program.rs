@@ -29,8 +29,10 @@ impl ShaderProgram {
             let mut texture:u32 = 0;
             gl::GenTextures(1, &mut texture);
             gl::BindTexture(gl::TEXTURE_2D_ARRAY, texture);
-            gl::TexImage3D(gl::TEXTURE_2D_ARRAY, 0, gl::RGBA8 as i32, width, height / n_layers, n_layers, 0, 
-                           gl::RGBA, gl::UNSIGNED_BYTE, pixel_buffer.as_ptr() as *const c_void);
+            gl::TexImage3D(
+                gl::TEXTURE_2D_ARRAY, 0, gl::RGBA8 as i32, width, height / n_layers, n_layers, 0, 
+                gl::RGBA, gl::UNSIGNED_BYTE, pixel_buffer.as_ptr() as *const c_void
+            );
             gl::TexParameteri(gl::TEXTURE_2D_ARRAY,gl::TEXTURE_MIN_FILTER,gl::LINEAR as i32);
             gl::TexParameteri(gl::TEXTURE_2D_ARRAY,gl::TEXTURE_MAG_FILTER,gl::LINEAR as i32);
             gl::TexParameteri(gl::TEXTURE_2D_ARRAY,gl::TEXTURE_WRAP_S,gl::CLAMP_TO_EDGE as i32);
@@ -40,7 +42,8 @@ impl ShaderProgram {
 
 
     pub fn load_texture(filename: &str) {
-        let image_data = image::ImageReader::open(format!("assets/{}.png", filename)).expect("file not found");
+        let image_data = image::ImageReader::open(format!("assets/{}.png", filename))
+            .expect("file not found");
         let decoded_reader = image_data.decode().unwrap();
         let (width, height) = (decoded_reader.width() as i32, decoded_reader.height() as i32);
         let pixel_buffer = decoded_reader.into_rgba8().into_raw();
@@ -49,8 +52,10 @@ impl ShaderProgram {
             let mut texture:u32 = 0;
             gl::GenTextures(1, &mut texture);
             gl::BindTexture(gl::TEXTURE_2D, texture);
-            gl::TexImage2D(gl::TEXTURE_2D, 0, gl::RGBA8 as i32, width, height, 0, gl::RGBA, 
-                           gl::UNSIGNED_BYTE, pixel_buffer.as_ptr() as *const c_void);
+            gl::TexImage2D(
+                gl::TEXTURE_2D, 0, gl::RGBA8 as i32, width, height, 0, gl::RGBA, 
+                gl::UNSIGNED_BYTE, pixel_buffer.as_ptr() as *const c_void
+            );
             gl::TexParameteri(gl::TEXTURE_2D,gl::TEXTURE_MIN_FILTER,gl::LINEAR as i32);
             gl::TexParameteri(gl::TEXTURE_2D,gl::TEXTURE_MAG_FILTER,gl::LINEAR as i32);
             gl::TexParameteri(gl::TEXTURE_2D,gl::TEXTURE_WRAP_S,gl::CLAMP_TO_EDGE as i32);
@@ -74,6 +79,7 @@ impl ShaderProgram {
         }
     }
 
+
     pub fn update_uniform(&self, shader_program:&u32, player:&Camera) {
         unsafe {
             gl::UseProgram(*shader_program);
@@ -86,13 +92,16 @@ impl ShaderProgram {
         }
     }
 
+
     pub fn set_all_uniforms(&mut self, player:&Camera) {
         self.set_uniform(&self.chunk, player);
     }
 
+
     pub fn update_all_uniforms(&mut self, player:&Camera) {
         self.update_uniform(&self.chunk, player);
     }
+
 
     pub fn update(&mut self, player:&Camera) {
         self.update_all_uniforms(player);

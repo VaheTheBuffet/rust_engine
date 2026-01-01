@@ -205,6 +205,7 @@ impl World {
 }
 
 
+#[repr(u8)]
 #[derive(Clone, Copy)]
 pub enum Face {
     Top, Bottom, Right, Left, Front, Back
@@ -234,8 +235,11 @@ impl Face {
     }
 
     #[inline]
-    pub fn iter() -> [Face; 6] {
-        [Face::Top, Face::Bottom, Face::Right, Face::Left, Face::Front, Face::Back]
+    pub fn iter() -> impl Iterator<Item = Face> {
+        [
+            Face::Top, Face::Bottom, Face::Right, 
+            Face::Left, Face::Front, Face::Back
+        ].into_iter()
     }
 
     pub fn coords(&self) -> [[i32; 3]; 6] {

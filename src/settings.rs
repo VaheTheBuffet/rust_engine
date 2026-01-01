@@ -29,8 +29,9 @@ pub const START_CHUNK_Y:i32 = (START_Y * INV_CHUNK_SIZE) as i32;
 pub const START_CHUNK_Z:i32 = (START_Z * INV_CHUNK_SIZE) as i32;
 
 
+pub const NUM_ENTITIES:usize = 8;
 #[repr(u8)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum VOXELS {
     EMPTY,
     SAND,
@@ -41,6 +42,21 @@ pub enum VOXELS {
     LEAF,
     WOOD
 }
+impl VOXELS {
+    pub fn iter() -> impl Iterator<Item = VOXELS> {
+        [
+            VOXELS::SAND,
+            VOXELS::GRASS,
+            VOXELS::DIRT,
+            VOXELS::COBBLESTONE,
+            VOXELS::SNOW,
+            VOXELS::LEAF,
+            VOXELS::WOOD
+        ].into_iter()
+    }
+}
+
+
 
 
 #[repr(u8)]

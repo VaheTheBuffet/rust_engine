@@ -113,16 +113,15 @@ impl VoxelEngine {
 
         let mut scene = Scene::new();
 
-        //mesh_builder_thread
-        let cheat = self as *mut _ as u64;
-        let cheat2 = &mut scene as *mut _ as u64;
+        //mesh_builder_thread is currently mostly unsynchronized 
+        //TODO: remake this in safe rust which would require a bunch of arcs idk
+        let engine_ptr = self as *mut _ as u64;
+        let scene_ptr = &mut scene as *mut _ as u64;
         std::thread::spawn(move|| {
-            let class_ptr = cheat as *mut VoxelEngine;
-            let scene_ptr = cheat2 as *mut Scene;
+            let class_ref = unsafe{&mut *(engine_ptr as *mut VoxelEngine)};
+            let scene_ref = unsafe{&mut *(scene_ptr as *mut Scene)};
             loop {
-                unsafe{
-                    (*scene_ptr).mesh_builder_thread(&(*class_ptr).player);
-                }
+                scene_ref.mesh_builder_thread(&class_ref.player);
             }
         });
 

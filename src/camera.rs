@@ -138,6 +138,7 @@ impl HasCamera for Camera {
         self.chunk_z = (self.z * INV_CHUNK_SIZE).floor() as i32;
     }
 
+    #[inline(always)]
     fn get_view_mat(&self) -> [f32;16] {
         [
             self.right[0],   self.right[1],   self.right[2],      -self.x*self.right[0]-self.y*self.right[1]-self.z*self.right[2],
@@ -147,6 +148,7 @@ impl HasCamera for Camera {
         ]
     }
 
+    #[inline(always)]
     fn get_proj_mat(&self) -> [f32;16] {
         [
             INV_VFOV*INV_ASPECT_RATIO,      0.0,                  0.0,                      0.0,

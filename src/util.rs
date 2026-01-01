@@ -60,3 +60,13 @@ pub fn _outer_border_range((px,py,pz):(i32,i32,i32)) -> impl Iterator<Item = (i3
         })
     })
 } 
+
+
+#[inline(always)]
+pub fn padded_chunk_positions() -> impl Iterator<Item = (i32, i32, i32)>{
+    (-1..=CHUNK_SIZE).flat_map(|x| {
+        (-1..=CHUNK_SIZE).flat_map(move |y| {
+            (-1..=CHUNK_SIZE).map(move |z| (x,y,z))
+        })
+    })
+}
