@@ -240,20 +240,19 @@ impl Chunk {
         face_id: Face
     ) -> Vec<u32> {
         let mut vertices = Vec::<u32>::new();
-        for (i0, &row) in plane.iter().enumerate() {
+        let mut quads = Vec::<[u32; 4]>::new();
+        for i0 in 0..plane.len() {
+            let row = plane[i0];
             if row == 0 {continue;}
             let b0 = row.trailing_zeros();
             let mut b1 = b0 + (row >> b0).trailing_ones();
-            let mut mask = (1u32 << b1) - 1u32;
+            let mut mask = u32::checked_shl(1, b1).map_or(!0u32, |n| n-1);
             let mut i1 = i0;
             while mask > 0 {
                 mask &= plane[i1];
                 b1 = b0 + (mask >> b0).trailing_zeros();
                 i1 += 1;
-                vertices.push(i0 as u32);
-                vertices.push(i1 as u32);
-                vertices.push(b0 as u32);
-                vertices.push(b1 as u32);
+                quads.push([i0 as u32, i1 as u32, b0 as u32, b1 as u32])
             }
 
             for i in i0..i1 {
