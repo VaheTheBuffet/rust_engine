@@ -155,12 +155,12 @@ uniform mat4 m_model;
 uniform mat4 m_view;
 uniform mat4 m_proj;
 
-out vec2 uv_coords;
 flat out float shading;
 flat out int voxel_id;
+flat out int face_id;
+out vec3 vertex_pos;
 
 ivec3 pos;
-int face_id;
 
 void unpack_data(int compressed_data) {
     int COORD_STRIDE = 6; int COORD_MASK = (1<<COORD_STRIDE)-1;
@@ -196,17 +196,29 @@ const vec2 face_texture_offset[6] = vec2[] (
 void main()
 {
     unpack_data(compressed_data);
-    uv_coords = (uv[uv_indices[gl_VertexID % 6]] + face_texture_offset[face_id]) * vec2(1/3.0,1);
     shading = get_shading(face_id);
-    gl_Position = m_proj*m_view*m_model*vec4(pos, 1.0);
+    vertex_pos = (m_model * vec4(pos, 1.0)).xyz;
+    gl_Position = m_proj * m_view * m_model * vec4(pos, 1.0);
 }\0";
 
 const CHUNK_FS: &'static str = "#version 330 core
-in vec2 uv_coords;
 flat in float shading;
 flat in int voxel_id;
+flat in int face_id;
+
+in vec3 vertex_pos;
 
 out vec4 FragColor;
+
+const vec2 face_texture_offset[6] = vec2[] (
+    vec2(2,0), vec2(0,0), vec2(1,0), vec2(1,0), vec2(1,0), vec2(1,0)
+);
+
+vec2 uv[6] = vec2[6](
+    fract(vertex_pos.xz), fract(vertex_pos.xz),
+    fract(vertex_pos.zy), fract(vertex_pos.zy),
+    fract(vertex_pos.xy), fract(vertex_pos.xy)
+);
 
 //#define TESTING
 #ifdef TESTING
@@ -217,6 +229,7 @@ uniform sampler2DArray tex_array;
 
 void main()
 {
+    vec2 uv_coords = (uv[face_id] + face_texture_offset[face_id]) * vec2(1/3.0,1);
 #ifdef TESTING
     FragColor = texture(test, uv_coords);
 #else
