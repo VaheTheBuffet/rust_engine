@@ -105,6 +105,7 @@ impl VoxelEngine {
     pub fn run(&mut self) {
         let mut last_update_time = 0.0;
         let mut second = 1.0;
+        //unsafe{gl::PolygonMode(gl::FRONT_AND_BACK, gl::LINE)};
 
         let (mut x1, mut y1) = (0f64, 0f64);
         unsafe {

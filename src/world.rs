@@ -37,7 +37,7 @@ impl World {
 
     fn mesh_build_task(&self, (x, y, z):(i32, i32, i32)) -> ChunkMeshData {
         let chunk_cluster = ChunkCluster::new(&self, x, y, z);
-        self.chunks.get(&(x,y,z)).unwrap().get_vertex_data(chunk_cluster)
+        self.chunks.get(&(x,y,z)).unwrap().get_vertex_data_optimized(chunk_cluster)
     }
 
 
@@ -205,7 +205,7 @@ impl World {
 }
 
 
-#[repr(u8)]
+#[repr(usize)]
 #[derive(Clone, Copy)]
 pub enum Face {
     Top, Bottom, Right, Left, Front, Back
@@ -302,6 +302,11 @@ impl<'a> ChunkCluster<'a> {
         } else {
             VOXELS::EMPTY
         }
+    }
+
+
+    pub fn is_solid(&self, local_x:i32, local_y:i32, local_z:i32) -> bool {
+        self.get_voxel(local_x, local_y, local_z) != VOXELS::EMPTY
     }
 
 
