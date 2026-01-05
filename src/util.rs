@@ -23,21 +23,21 @@ impl Noise {
 
 
 #[inline(always)]
-pub fn render_range((px,py,pz):(i32,i32,i32)) -> impl ParallelIterator<Item = (i32,i32,i32)> {
-    (-RENDER_DISTANCE+px..=RENDER_DISTANCE+px).into_par_iter().flat_map(move |x| {
-        (-RENDER_DISTANCE+py..=RENDER_DISTANCE+py).into_par_iter().flat_map(move |y| {
-            (-RENDER_DISTANCE+pz..=RENDER_DISTANCE+pz).into_par_iter().map(move |z| {
+pub fn render_range((px,py,pz):(i32,i32,i32)) -> impl Iterator<Item = (i32,i32,i32)> {
+    (-RENDER_DISTANCE+px..=RENDER_DISTANCE+px).flat_map(move |x| {
+        (-RENDER_DISTANCE+py..=RENDER_DISTANCE+py).flat_map(move |y| {
+            (-RENDER_DISTANCE+pz..=RENDER_DISTANCE+pz).map(move |z| {
                 (x,y,z)
             })
         })
-    }).into_par_iter()
+    })
 } 
 
 
 #[inline(always)]
-pub fn border_range((px,py,pz):(i32,i32,i32)) -> impl ParallelIterator<Item = (i32,i32,i32)> {
-    (-RENDER_DISTANCE-1..=RENDER_DISTANCE+1).into_par_iter().flat_map(move |t1| {
-        (-RENDER_DISTANCE-1..=RENDER_DISTANCE+1).into_par_iter().flat_map(move |t2| {
+pub fn border_range((px,py,pz):(i32,i32,i32)) -> impl Iterator<Item = (i32,i32,i32)> {
+    (-RENDER_DISTANCE-1..=RENDER_DISTANCE+1).flat_map(move |t1| {
+        (-RENDER_DISTANCE-1..=RENDER_DISTANCE+1).flat_map(move |t2| {
             [
                 (px-RENDER_DISTANCE-1,py+t1,pz+t2), (px+RENDER_DISTANCE+1,py+t1,pz+t2),
                 (px+t1,py-RENDER_DISTANCE-1,pz+t2), (px+t1,py+RENDER_DISTANCE+1,pz+t2),

@@ -215,9 +215,9 @@ const vec2 face_texture_offset[6] = vec2[] (
 );
 
 vec2 uv[6] = vec2[6](
-    fract(vertex_pos.xz), fract(vertex_pos.xz),
-    fract(vertex_pos.zy), fract(vertex_pos.zy),
-    fract(vertex_pos.xy), fract(vertex_pos.xy)
+    fract(vertex_pos.xz), vec2(0,1)+vec2(1,-1)*fract(vertex_pos.xz),
+    vec2(1,1)+vec2(-1,-1)*fract(vertex_pos.zy), vec2(0,1)+vec2(1,-1)*fract(vertex_pos.zy),
+    vec2(0,1)+vec2(1,-1)*fract(vertex_pos.xy), (1,1)+(-1,-1)*fract(vertex_pos.xy)
 );
 
 //#define TESTING

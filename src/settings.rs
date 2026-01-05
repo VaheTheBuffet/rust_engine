@@ -18,7 +18,7 @@ pub const CHUNK_VOL:i32 = CHUNK_AREA * CHUNK_SIZE;
 pub const P_CHUNK_SIZE:i32 = 34;
 pub const P_CHUNK_AREA:i32 = P_CHUNK_SIZE * P_CHUNK_SIZE - 4;
 
-pub const RENDER_DISTANCE:i32 = 8;
+pub const RENDER_DISTANCE:i32 = 5;
 //pub const RENDER_VOL:i32 = (2*RENDER_DISTANCE+1)*(2*RENDER_DISTANCE+1)*(2*RENDER_DISTANCE+1);
 
 pub const SEED:u32 = 1;
