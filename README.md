@@ -1,4 +1,4 @@
-Minecraft-like voxel engine written in Rust
+Minecraft-like voxel engine written in Rust using OpenGL
 
 WASDQE + mouse for movement
 
