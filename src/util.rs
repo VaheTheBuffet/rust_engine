@@ -1,5 +1,4 @@
 use noise::{NoiseFn, Perlin};
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use crate::settings::*;
 
 pub struct Noise {

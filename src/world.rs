@@ -1,19 +1,14 @@
 use crate::{
-    camera::Camera, 
-    chunk::{Chunk, ChunkMeshData, ChunkStatus}, 
-    math, 
-    settings::*, 
-    shader_program::ShaderProgram, 
-    util::{self, Noise, render_range}
+    camera::Camera, chunk::{Chunk, ChunkMesh, ChunkStatus}, math, renderer, settings::*, shader_program::GlobalShaderProgram, util::{self, Noise, render_range}
 };
 use std::{collections::HashMap};
 use rayon::prelude::*;
 
 
 pub struct World {
-    chunks:HashMap<(i32,i32,i32), Chunk>,
+    chunks:HashMap<(i32,i32,i32), Chunk<renderer::GLVertexArray>>,
     noise: Noise,
-    meshes:std::sync::Mutex<Vec<ChunkMeshData>>
+    meshes:std::sync::Mutex<Vec<ChunkMesh>>
 }
 
 impl World {
@@ -23,8 +18,8 @@ impl World {
     }
 
 
-    fn chunk_build_task(&self, (x,y,z):(i32,i32,i32), noise:&Noise) -> Chunk {
-        let mut chunk = Chunk::new(x, y, z);
+    fn chunk_build_task(&self, (x,y,z):(i32,i32,i32), noise:&Noise) -> Chunk<renderer::GLVertexArray> {
+        let mut chunk = Chunk::<renderer::GLVertexArray>::new(x, y, z);
         chunk.build_voxels(noise);
         chunk
     }
@@ -35,9 +30,9 @@ impl World {
     }
 
 
-    fn mesh_build_task(&self, (x, y, z):(i32, i32, i32)) -> ChunkMeshData {
+    fn mesh_build_task(&self, (x, y, z):(i32, i32, i32)) -> ChunkMesh {
         let chunk_cluster = ChunkCluster::new(&self, x, y, z);
-        self.chunks.get(&(x,y,z)).unwrap().get_vertex_data_optimized(chunk_cluster)
+        self.chunks.get(&(x,y,z)).unwrap().get_mesh(chunk_cluster)
     }
 
 
@@ -67,13 +62,14 @@ impl World {
     }
 
 
-    pub fn draw(&mut self, player:&Camera) {
+    pub fn draw(&mut self, player:&Camera, shader_program: &GlobalShaderProgram) {
         for x in player.chunk_x-RENDER_DISTANCE..=player.chunk_x+RENDER_DISTANCE {
             for y in player.chunk_y-RENDER_DISTANCE..=player.chunk_y+RENDER_DISTANCE {
                 for z in player.chunk_z-RENDER_DISTANCE..=player.chunk_z+RENDER_DISTANCE {
                     //let chunk = self.chunks.get(&(x,y,z)).expect("chunk not set before drawing");
                     if let Some(chunk) = self.chunks.get(&(x,y,z)) {
                         if chunk.status == ChunkStatus::Clean {
+                            chunk.update_uniforms(shader_program);
                             chunk.draw();
                        } 
                     }
@@ -152,16 +148,11 @@ impl World {
     }
 
 
-    pub fn threaded_update_visible_chunks(&mut self, player:&Camera) {
+    pub fn threaded_update_visible_chunks(&mut self) {
         let mut meshes = self.meshes.lock().unwrap();
         while let Some(mesh) = meshes.pop() {
             self.chunks.get_mut(&(mesh.pos)).unwrap().build_mesh(mesh);
         }
-    }
-
-
-    pub fn init(shader_program:&ShaderProgram) {
-        Chunk::init(shader_program);
     }
 
 
@@ -256,13 +247,13 @@ impl Face {
 
 
 pub struct ChunkCluster<'a> {
-    center:Option<&'a Chunk>,
-    top:Option<&'a Chunk>,
-    bottom:Option<&'a Chunk>,
-    right:Option<&'a Chunk>,
-    left:Option<&'a Chunk>,
-    front:Option<&'a Chunk>,
-    back:Option<&'a Chunk>
+    center:Option<&'a Chunk<renderer::GLVertexArray>>,
+    top:Option<&'a Chunk<renderer::GLVertexArray>>,
+    bottom:Option<&'a Chunk<renderer::GLVertexArray>>,
+    right:Option<&'a Chunk<renderer::GLVertexArray>>,
+    left:Option<&'a Chunk<renderer::GLVertexArray>>,
+    front:Option<&'a Chunk<renderer::GLVertexArray>>,
+    back:Option<&'a Chunk<renderer::GLVertexArray>>
 }
 
 impl<'a> ChunkCluster<'a> {

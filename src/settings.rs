@@ -18,7 +18,7 @@ pub const CHUNK_VOL:i32 = CHUNK_AREA * CHUNK_SIZE;
 pub const P_CHUNK_SIZE:i32 = 34;
 pub const P_CHUNK_AREA:i32 = P_CHUNK_SIZE * P_CHUNK_SIZE - 4;
 
-pub const RENDER_DISTANCE:i32 = 5;
+pub const RENDER_DISTANCE:i32 = 8;
 //pub const RENDER_VOL:i32 = (2*RENDER_DISTANCE+1)*(2*RENDER_DISTANCE+1)*(2*RENDER_DISTANCE+1);
 
 pub const SEED:u32 = 1;
@@ -33,6 +33,7 @@ pub const START_CHUNK_Z:i32 = (START_Z * INV_CHUNK_SIZE) as i32;
 
 
 pub const NUM_ENTITIES:usize = 8;
+pub const NUM_TEXTURES:i32 = NUM_ENTITIES as i32 + 1;
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum VOXELS {
@@ -43,7 +44,8 @@ pub enum VOXELS {
     COBBLESTONE,
     SNOW,
     LEAF,
-    WOOD
+    WOOD,
+    WATER
 }
 impl VOXELS {
     pub fn iter() -> impl Iterator<Item = VOXELS> {
@@ -54,7 +56,8 @@ impl VOXELS {
             VOXELS::COBBLESTONE,
             VOXELS::SNOW,
             VOXELS::LEAF,
-            VOXELS::WOOD
+            VOXELS::WOOD,
+            VOXELS::WATER
         ].into_iter()
     }
 }

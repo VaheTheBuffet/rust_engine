@@ -7,6 +7,7 @@ mod scene;
 mod chunk;
 mod world;
 mod util;
+mod renderer;
 
 fn main() {
     let mut app = window::VoxelEngine::new();
