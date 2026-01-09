@@ -5,7 +5,7 @@ use glfw:: {
         glfwGetCursorPos, glfwGetKey, glfwGetTime, glfwSetInputMode, glfwSetWindowTitle
     }
 };
-use crate::{camera::{Camera, HasCamera}, scene::Scene};
+use crate::{camera::{Camera, Player}, scene::Scene};
 use crate::settings::*;
 
 
@@ -13,7 +13,7 @@ pub struct VoxelEngine {
     glfw:glfw::Glfw,
     window:glfw::PWindow,
     events:glfw::GlfwReceiver<(f64, glfw::WindowEvent)>,
-    player:Camera
+    player:Player
 }
 
 impl VoxelEngine {
@@ -40,7 +40,7 @@ impl VoxelEngine {
         window.set_key_polling(true);
 
 
-        let player = Camera::new();
+        let player = Player::new();
 
         VoxelEngine{glfw, window, events, player}
     }
@@ -55,13 +55,13 @@ impl VoxelEngine {
         unsafe{
             gl::Enable(gl::DEPTH_TEST);
             gl::Enable(gl::CULL_FACE);
-            //gl::Enable(gl::BLEND);
+            gl::Enable(gl::BLEND);
             //gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
         }
     }
 
 
-    pub fn handle_events(&mut self, delta_time:&f32) {
+    pub fn handle_events(&mut self, delta_time:f32) {
         self.glfw.poll_events();
         for (_, event) in glfw::flush_messages(&self.events) {
             match event {
@@ -95,8 +95,8 @@ impl VoxelEngine {
 
 
     pub fn handle_mouse_move(&mut self, dx:f64, dy:f64) {
-        self.player.rot_yaw(&(dx as f32));
-        self.player.rot_pitch(&(dy as f32));
+        self.player.rot_yaw(dx as f32);
+        self.player.rot_pitch(dy as f32);
     }
 
 
@@ -148,7 +148,7 @@ impl VoxelEngine {
             let (x0, y0) = (x1, y1);
             unsafe{glfwGetCursorPos(self.window.window_ptr(), &mut x1, &mut y1);}
             self.handle_mouse_move(x1-x0, y1-y0);
-            self.handle_events(&(delta_time as f32));
+            self.handle_events(delta_time as f32);
             self.player.update();
             scene.update(&self.player);
             self.window.swap_buffers();

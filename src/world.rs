@@ -1,5 +1,11 @@
 use crate::{
-    camera::Camera, chunk::{Chunk, ChunkMesh, ChunkStatus}, math, renderer, settings::*, shader_program::GlobalShaderProgram, util::{self, Noise, render_range}
+    camera::{Camera, Player}, 
+    chunk::{Chunk, ChunkMesh, ChunkStatus}, 
+    math, 
+    renderer, 
+    settings::*, 
+    shader_program::GlobalShaderProgram, 
+    util::{self, Noise}
 };
 use std::{collections::HashMap};
 use rayon::prelude::*;
@@ -62,16 +68,15 @@ impl World {
     }
 
 
-    pub fn draw(&mut self, player:&Camera, shader_program: &GlobalShaderProgram) {
+    pub fn draw(&mut self, player:&Player, shader_program: &GlobalShaderProgram) {
         for x in player.chunk_x-RENDER_DISTANCE..=player.chunk_x+RENDER_DISTANCE {
             for y in player.chunk_y-RENDER_DISTANCE..=player.chunk_y+RENDER_DISTANCE {
                 for z in player.chunk_z-RENDER_DISTANCE..=player.chunk_z+RENDER_DISTANCE {
-                    //let chunk = self.chunks.get(&(x,y,z)).expect("chunk not set before drawing");
                     if let Some(chunk) = self.chunks.get(&(x,y,z)) {
-                        if chunk.status == ChunkStatus::Clean {
+                        if chunk.status == ChunkStatus::Clean && player.is_in_frustum(chunk.center) {
                             chunk.update_uniforms(shader_program);
                             chunk.draw();
-                       } 
+                        } 
                     }
                 }
             }
@@ -79,52 +84,41 @@ impl World {
     }
 
 
-    pub fn promote_chunks(&mut self, player:&Camera) -> (
+    pub fn promote_chunks(&mut self, player:&Player) -> (
         Vec<(i32, i32, i32)>, Vec<(i32, i32, i32)>, Vec<(i32, i32, i32)>
     ) {
         let (px, py, pz) = (player.chunk_x, player.chunk_y, player.chunk_z);
-        let dirty_positions: Vec<_> = render_range((px,py,pz)).filter(|&pos| {
+        let mut build_positions = Vec::<(i32, i32, i32)>::new();
+        let mut dirty_positions = Vec::<(i32, i32, i32)>::new();
+        let mut terrain_positions = Vec::<(i32, i32, i32)>::new();
+
+        for pos in util::render_range((px, py, pz)) {
             if let Some(chunk) = self.chunks.get(&pos) {
                 match chunk.status {
                     ChunkStatus::Dirty => {
-                        true
+                        dirty_positions.push(pos);
                     }
                     ChunkStatus::Terrain => {
-                        true
+                        terrain_positions.push(pos);
                     }
-                    _ => false
+                    _ => {}
                 }
             } else {
-                true
+                build_positions.push(pos);
+                dirty_positions.push(pos);
+                terrain_positions.push(pos);
             }
-        }).collect();
-
-        let mut build_positions: Vec<_> = render_range((px,py,pz)).filter(|&pos| {
-            if let None = self.chunks.get(&(pos)) {true} else {false}
-        }).collect();
-
-        let terrain_positions: Vec<_> = render_range((px,py,pz)).filter(|&pos| {
-            if let Some(chunk) = self.chunks.get(&pos) {
-                match chunk.status {
-                    ChunkStatus::Terrain => {
-                        true
-                    }
-                    _ => false
-                }
-            } else {
-                true
-            }
-        }).collect();
+        }
 
         //handle edge chunks
-        build_positions.extend(util::border_range((px,py,pz)).filter(|&pos| {
+        build_positions.extend(util::border_range((px, py, pz)).filter(|&pos| {
             if let None = self.chunks.get(&pos) {true} else {false}
         }).collect::<Vec<_>>());
         (build_positions, terrain_positions, dirty_positions)
     }
 
 
-    pub fn mesh_builder_thread(&mut self, player:&Camera) {
+    pub fn mesh_builder_thread(&mut self, player:&Player) {
         let (build_positions, terrain_positions, dirty_positions) = self.promote_chunks(player);
 
         let new_chunks: Vec<_> = build_positions.par_iter().map(

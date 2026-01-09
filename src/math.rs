@@ -1,6 +1,11 @@
+use std::process::Output;
+
+use image::codecs::webp;
+
 use crate::settings::CHUNK_SIZE;
 
 pub const H_PI:f32 = 1.57;
+pub const ROOT_3: f32 = 1.7320508076;
 pub const IDENTITY:[f32;16] = [
     1.0,0.0,0.0,0.0,
     0.0,1.0,0.0,0.0,
@@ -27,8 +32,17 @@ pub const HASH:[i32;256] = [
 ];
 
 #[inline(always)]
-pub fn cross(a:&[f32; 3], b:&[f32; 3]) -> [f32; 3] {
+pub fn cross<T>(a: [T; 3], b: [T; 3]) -> [T; 3] 
+where T: std::ops::Mul<Output = T> + std::ops::Sub::<Output = T> + Copy
+{
     [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-b[2]*a[0], a[0]*b[1]-a[1]*b[0]]
+}
+
+#[inline(always)]
+pub fn dot<T>(a: [T; 3], b: [T; 3]) -> T 
+where T: std::ops::Mul<Output = T> + std::ops::Add::<Output = T> + Copy
+{
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
 #[inline(always)]

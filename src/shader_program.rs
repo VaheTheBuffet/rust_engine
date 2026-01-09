@@ -1,6 +1,10 @@
 use std::os::raw::c_void;
 use std::{ptr::null};
-use crate::{camera::{Camera, HasCamera}, math::IDENTITY, settings};
+use crate::{
+    camera::{Camera, Player}, 
+    math::IDENTITY, 
+    settings
+};
 use image::{self};
 
 pub trait ShaderProgram {
@@ -141,7 +145,7 @@ impl GlobalShaderProgram {
     }
 
 
-    pub fn set_uniform(&self, player:&Camera) {
+    pub fn set_uniform(&self, player:&Player) {
 
         self.programs[0].set_uniform("m_model\0", IDENTITY);
         self.programs[0].set_uniform("m_view\0", player.get_view_mat());
@@ -149,23 +153,23 @@ impl GlobalShaderProgram {
     }
 
 
-    pub fn update_uniform(&self, player:&Camera) {
+    pub fn update_uniform(&self, player:&Player) {
         self.programs[0].set_uniform("m_view\0", player.get_view_mat());
         self.programs[0].set_uniform("m_proj\0", player.get_proj_mat());
     }
 
 
-    pub fn set_all_uniforms(&self, player:&Camera) {
+    pub fn set_all_uniforms(&self, player:&Player) {
         self.set_uniform(player);
     }
 
 
-    pub fn update_all_uniforms(&self, player:&Camera) {
+    pub fn update_all_uniforms(&self, player:&Player) {
         self.update_uniform(player);
     }
 
 
-    pub fn update(&self, player:&Camera) {
+    pub fn update(&self, player:&Player) {
         self.update_all_uniforms(player);
     }
 }

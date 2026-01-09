@@ -1,9 +1,9 @@
-use crate::math::{cross, normalize, H_PI};
+use crate::math::{dot, H_PI};
 use crate::{settings::*};
 use core::f32;
 
 
-pub struct Camera {
+pub struct Player {
     pub pitch:f32,
     pub yaw:f32,
     pub x:f32,
@@ -20,11 +20,11 @@ pub struct Camera {
 }
 
 
-impl Camera{
-    pub fn new() -> Camera {
-        Camera {
+impl Player{
+    pub fn new() -> Player {
+        Player {
             pitch:0.0,
-            yaw:-H_PI,
+            yaw:0.0,
             x:START_X,
             y:START_Y,
             z:START_Z,
@@ -41,97 +41,82 @@ impl Camera{
 }
 
 
-pub trait HasCamera{
-    fn move_up(&mut self, dt:&f32);
-    fn move_down(&mut self, dt:&f32);
-    fn move_right(&mut self, dt:&f32);
-    fn move_left(&mut self, dt:&f32);
-    fn move_forward(&mut self, dt:&f32);
-    fn move_backward(&mut self, dt:&f32);
-    fn rot_yaw(&mut self, mouse_dx:&f32);
-    fn rot_pitch(&mut self, mouse_dy:&f32);
-    fn update_forward(&mut self);
-    fn update_right(&mut self);
-    fn update_up(&mut self);
+pub trait Camera{
+    fn move_up(&mut self, dt:f32);
+    fn move_down(&mut self, dt:f32);
+    fn move_right(&mut self, dt:f32);
+    fn move_left(&mut self, dt:f32);
+    fn move_forward(&mut self, dt:f32);
+    fn move_backward(&mut self, dt:f32);
+    fn rot_yaw(&mut self, mouse_dx:f32);
+    fn rot_pitch(&mut self, mouse_dy:f32);
     fn update(&mut self);
     fn get_view_mat(&self)->[f32;16];
     fn get_proj_mat(&self)->[f32;16];
+    fn is_in_frustum(&self, pos: (f32, f32, f32))->bool;
 }
 
 
-impl HasCamera for Camera {
-    fn move_up(self:&mut Camera, delta_time:&f32) {
+impl Camera for Player {
+    fn move_up(self:&mut Player, delta_time:f32) {
         let [x,y,z] = self.up;
         self.x += x*self.speed*delta_time;
         self.y += y*self.speed*delta_time;
         self.z += z*self.speed*delta_time;
     }
 
-    fn move_down(&mut self, delta_time:&f32) {
+    fn move_down(&mut self, delta_time:f32) {
         let [x,y,z] = self.up;
         self.x -= x*self.speed*delta_time;
         self.y -= y*self.speed*delta_time;
         self.z -= z*self.speed*delta_time;
     }
 
-    fn move_right(&mut self, delta_time:&f32) {
+    fn move_right(&mut self, delta_time:f32) {
         let [x,y,z] = self.right;
         self.x += x*self.speed*delta_time;
         self.y += y*self.speed*delta_time;
         self.z += z*self.speed*delta_time;
     }
 
-    fn move_left(&mut self, delta_time:&f32) {
+    fn move_left(&mut self, delta_time:f32) {
         let [x,y,z] = self.right;
         self.x -= x*self.speed*delta_time;
         self.y -= y*self.speed*delta_time;
         self.z -= z*self.speed*delta_time;
     }
 
-    fn move_forward(&mut self, delta_time:&f32) {
-        let [x,y,z] = self.forward;
-        self.x += x*self.speed*delta_time;
-        self.y += y*self.speed*delta_time;
-        self.z += z*self.speed*delta_time;
-    }
-
-    fn move_backward(&mut self, delta_time:&f32) {
+    fn move_forward(&mut self, delta_time:f32) {
         let [x,y,z] = self.forward;
         self.x -= x*self.speed*delta_time;
         self.y -= y*self.speed*delta_time;
         self.z -= z*self.speed*delta_time;
     }
 
-    fn rot_pitch(&mut self, dy:&f32) {
+    fn move_backward(&mut self, delta_time:f32) {
+        let [x,y,z] = self.forward;
+        self.x += x*self.speed*delta_time;
+        self.y += y*self.speed*delta_time;
+        self.z += z*self.speed*delta_time;
+    }
+
+    fn rot_pitch(&mut self, dy:f32) {
         self.pitch = (self.pitch - self.sensitivity*dy).clamp(-H_PI, H_PI);
     }
 
-    fn rot_yaw(&mut self, dx:&f32) {
-        self.yaw =self.yaw + self.sensitivity*dx;
-    }
-
-    fn update_forward(&mut self) {
-        let cy = self.yaw.cos();
-        let sy = self.yaw.sin();
-        let cp = self.pitch.cos();
-        let sp = self.pitch.sin();
-        self.forward[0] = cy * cp;
-        self.forward[1] = sp;
-        self.forward[2] = sy * cp;
-    }
-
-    fn update_right(&mut self) {
-        self.right = normalize(&mut cross(&self.forward, &[0.0,1.0,0.0]));
-    }
-
-    fn update_up(&mut self) {
-        self.up = cross(&self.right, &self.forward);
+    fn rot_yaw(&mut self, dx:f32) {
+        self.yaw -= self.sensitivity*dx;
     }
 
     fn update(&mut self) {
-        self.update_forward();
-        self.update_right();
-        self.update_up();
+        let sinyaw = self.yaw.sin();
+        let cosyaw = self.yaw.cos();
+        let sinpitch = self.pitch.sin();
+        let cospitch = self.pitch.cos();
+
+        self.right = [cosyaw, 0.0, -sinyaw];
+        self.up = [sinyaw*sinpitch, cospitch, cosyaw*sinpitch];
+        self.forward = [sinyaw*cospitch, -sinpitch, cospitch*cosyaw];
 
         self.chunk_x = (self.x * INV_CHUNK_SIZE).floor() as i32;
         self.chunk_y = (self.y * INV_CHUNK_SIZE).floor() as i32;
@@ -150,11 +135,20 @@ impl HasCamera for Camera {
 
     #[inline(always)]
     fn get_proj_mat(&self) -> [f32;16] {
-        [
-            INV_VFOV*INV_ASPECT_RATIO,      0.0,                  0.0,                      0.0,
-                                  0.0, INV_VFOV,                  0.0,                      0.0,
-                                  0.0,      0.0, (FAR+NEAR)*INV_DEPTH,-2.0*(FAR*NEAR)*INV_DEPTH,
-                                  0.0,      0.0,                  1.0,                      0.0 
-        ]
+        PROJECTION
+    }
+
+    fn is_in_frustum(&self, (x, y, z): (f32, f32, f32)) -> bool {
+        let dv = [x-self.x,y-self.y,z-self.z];
+        let depth = dot(self.forward, dv);
+        if depth > -NEAR + CHUNK_RADIUS || depth < -FAR - CHUNK_RADIUS {return false;}
+
+        let vertical = dot(self.up, dv).abs();
+        if vertical > FRUSTUM_Y - depth * VFOV_TAN {return false;}
+
+        let horizontal = dot(self.right, dv).abs();
+        if horizontal > FRUSTUM_X - depth * HFOV_TAN {return false;}
+
+        true
     }
 }

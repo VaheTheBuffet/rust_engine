@@ -8,6 +8,7 @@ use crate::renderer::{self, VertexArray};
 
 pub struct Chunk<T: renderer::VertexArray> {
     pub pos: (i32, i32, i32),
+    pub center: (f32, f32, f32),
     pub voxels: Vec<VOXELS>,
     pub vertex_count: i32,
     pub status: ChunkStatus,
@@ -18,9 +19,32 @@ impl<T: VertexArray> Chunk<T> {
     pub fn new(x:i32, y:i32, z:i32) -> Chunk<T> {
         Chunk{
             pos:(x, y, z), 
+            center: (
+                (x * CHUNK_SIZE + H_CHUNK_SIZE) as f32, 
+                (y * CHUNK_SIZE + H_CHUNK_SIZE) as f32, 
+                (z * CHUNK_SIZE + H_CHUNK_SIZE) as f32
+            ),
             voxels:vec![VOXELS::EMPTY;CHUNK_VOL as usize], 
             vertex_count:0, 
             status:ChunkStatus::Empty,
+            vertex_array:None
+        }
+    }
+
+
+    #[cfg(debug_assertions)]
+    pub fn filled(x:i32, y:i32, z:i32) -> Chunk<T> {
+        let voxels = vec![VOXELS::WOOD;CHUNK_VOL as usize];
+        Chunk{
+            pos:(x, y, z), 
+            center: (
+                (x * CHUNK_SIZE + H_CHUNK_SIZE) as f32, 
+                (y * CHUNK_SIZE + H_CHUNK_SIZE) as f32, 
+                (z * CHUNK_SIZE + H_CHUNK_SIZE) as f32
+            ),
+            voxels,
+            vertex_count:0, 
+            status:ChunkStatus::Dirty,
             vertex_array:None
         }
     }
@@ -347,61 +371,80 @@ impl<T: VertexArray> Chunk<T> {
             }
         }
 
-        for [u0, u1, v0, v1] in quads {
-            vertices.extend(
-                match face {
-                    Face::Top => [
+        match face {
+            Face::Top => {
+                for [u0, u1, v0, v1] in quads {
+                    vertices.extend([
                         Chunk::<T>::compress_data(u0, depth+1, v1, face, voxel_id), 
                         Chunk::<T>::compress_data(u1, depth+1, v1, face, voxel_id),
                         Chunk::<T>::compress_data(u1, depth+1, v0, face, voxel_id),
                         Chunk::<T>::compress_data(u1, depth+1, v0, face, voxel_id),
                         Chunk::<T>::compress_data(u0, depth+1, v0, face, voxel_id),
                         Chunk::<T>::compress_data(u0, depth+1, v1, face, voxel_id)
-                    ],
-                    Face::Bottom => [
+                    ])
+                }
+            }
+            Face::Bottom => {
+                for [u0, u1, v0, v1] in quads {
+                    vertices.extend([
                         Chunk::<T>::compress_data(u0, depth, v0, face, voxel_id),
                         Chunk::<T>::compress_data(u1, depth, v0, face, voxel_id),
                         Chunk::<T>::compress_data(u1, depth, v1, face, voxel_id),
                         Chunk::<T>::compress_data(u1, depth, v1, face, voxel_id),
                         Chunk::<T>::compress_data(u0, depth, v1, face, voxel_id),
                         Chunk::<T>::compress_data(u0, depth, v0, face, voxel_id)
-                    ],
-                    Face::Right => [
+                    ])
+                }
+           }
+            Face::Right => {
+                for [u0, u1, v0, v1] in quads {
+                    vertices.extend([
                         Chunk::<T>::compress_data(depth+1, u0, v1, face, voxel_id),
                         Chunk::<T>::compress_data(depth+1, u0, v0, face, voxel_id),
                         Chunk::<T>::compress_data(depth+1, u1, v0, face, voxel_id),
                         Chunk::<T>::compress_data(depth+1, u1, v0, face, voxel_id),
                         Chunk::<T>::compress_data(depth+1, u1, v1, face, voxel_id),
                         Chunk::<T>::compress_data(depth+1, u0, v1, face, voxel_id),
-                    ],
-                    Face::Left => [
+                    ])
+                }
+            }
+            Face::Left => {
+                for [u0, u1, v0, v1] in quads {
+                    vertices.extend([
                         Chunk::<T>::compress_data(depth, u0, v0, face, voxel_id),
                         Chunk::<T>::compress_data(depth, u0, v1, face, voxel_id),
                         Chunk::<T>::compress_data(depth, u1, v1, face, voxel_id),
                         Chunk::<T>::compress_data(depth, u1, v1, face, voxel_id),
                         Chunk::<T>::compress_data(depth, u1, v0, face, voxel_id),
                         Chunk::<T>::compress_data(depth, u0, v0, face, voxel_id)
-                    ],
-                    Face::Front => [
+                    ])
+                }
+            }
+            Face::Front => {
+                for [u0, u1, v0, v1] in quads {
+                    vertices.extend([
                         Chunk::<T>::compress_data(u0, v0, depth+1, face, voxel_id),
                         Chunk::<T>::compress_data(u1, v0, depth+1, face, voxel_id),
                         Chunk::<T>::compress_data(u1, v1, depth+1, face, voxel_id),
                         Chunk::<T>::compress_data(u1, v1, depth+1, face, voxel_id),
                         Chunk::<T>::compress_data(u0, v1, depth+1, face, voxel_id),
                         Chunk::<T>::compress_data(u0, v0, depth+1, face, voxel_id)
-                    ],
-                    Face::Back => [
+                    ])
+                }
+            }
+            Face::Back => {
+                for [u0, u1, v0, v1] in quads {
+                    vertices.extend([
                         Chunk::<T>::compress_data(u1, v0, depth, face, voxel_id),
                         Chunk::<T>::compress_data(u0, v0, depth, face, voxel_id),
                         Chunk::<T>::compress_data(u0, v1, depth, face, voxel_id),
                         Chunk::<T>::compress_data(u0, v1, depth, face, voxel_id),
                         Chunk::<T>::compress_data(u1, v1, depth, face, voxel_id),
                         Chunk::<T>::compress_data(u1, v0, depth, face, voxel_id),
-                    ]
+                    ])
                 }
-            )
+            }
         }
-
         vertices
     }
 
@@ -459,8 +502,6 @@ impl<T: VertexArray> Chunk<T> {
                     *row &= 0xFFFFFFFF;
                 }
             }
-
-            let i:i32 = 5;
 
             mesh.vertices.extend(masks[0].iter_mut().enumerate().flat_map(|(i, row)| {
                 let mut res = Vec::<u32>::new();

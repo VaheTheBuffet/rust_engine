@@ -1,4 +1,4 @@
-use crate::camera::Camera;
+use crate::camera::{Player};
 use crate::shader_program::{GlobalShaderProgram};
 use crate::world::World;
 
@@ -16,7 +16,7 @@ impl Scene {
     }
 
 
-    pub fn draw(&mut self, player:&Camera) {
+    pub fn draw(&mut self, player:&Player) {
         //let time = std::time::Instant::now();
         //static mut AVERAGE:std::time::Duration = std::time::Duration::from_secs(0);
         //static mut N:f32 = 0.0;
@@ -32,11 +32,11 @@ impl Scene {
     }
 
 
-    pub fn mesh_builder_thread(&mut self, player: &Camera) {
+    pub fn mesh_builder_thread(&mut self, player: &Player) {
         self.world.mesh_builder_thread(player);
     }
 
-    pub fn update(&mut self, player:&Camera) {
+    pub fn update(&mut self, player:&Player) {
         self.shader_program.update(player);
     }
 }

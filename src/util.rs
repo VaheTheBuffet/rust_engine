@@ -69,3 +69,16 @@ pub fn padded_chunk_positions() -> impl Iterator<Item = (i32, i32, i32)>{
         })
     })
 }
+
+
+#[inline(always)]
+#[cfg(debug_assertions)]
+pub fn test_render_range() -> impl Iterator<Item = (i32, i32, i32)> {
+    [(1,1,1)].into_iter()
+}
+
+#[inline(always)]
+#[cfg(debug_assertions)]
+pub fn test_border_range() -> impl Iterator<Item = (i32, i32, i32)> { 
+    [].into_iter()
+}
