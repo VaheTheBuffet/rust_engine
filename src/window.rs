@@ -1,4 +1,4 @@
-use std::{ptr::null};
+use std::{ptr::null, rc:: Rc};
 use glfw:: {
     self, Action, Context, Key, fail_on_errors, ffi::{
         GLFW_CURSOR, GLFW_CURSOR_DISABLED, GLFW_PRESS, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE, 
@@ -13,14 +13,15 @@ pub struct VoxelEngine {
     glfw:glfw::Glfw,
     window:glfw::PWindow,
     events:glfw::GlfwReceiver<(f64, glfw::WindowEvent)>,
-    player:Player
+    player:Player,
+    context: Rc<glow::Context>
 }
 
 impl VoxelEngine {
     pub fn new() -> VoxelEngine{
         let mut glfw = glfw::init(fail_on_errors!()).unwrap();
 
-        glfw.window_hint(glfw::WindowHint::ContextVersion(3, 3));
+        glfw.window_hint(glfw::WindowHint::ContextVersion(4, 5));
         glfw.window_hint(glfw::WindowHint::OpenGlProfile(glfw::OpenGlProfileHint::Core));
         glfw.window_hint(glfw::WindowHint::OpenGlForwardCompat(true));
         glfw.window_hint(glfw::WindowHint::OpenGlDebugContext(false));
@@ -42,22 +43,13 @@ impl VoxelEngine {
 
         let player = Player::new();
 
-        VoxelEngine{glfw, window, events, player}
-    }
-
-
-    pub fn init_gl(&mut self) {
-        let func = |s| {
-            match self.window.get_proc_address(s) {Some(f) => f as _, _ => null()} 
+        let context = unsafe {
+            glow::Context::from_loader_function(
+                |s: &str| match window.get_proc_address(s) {Some(f) => f as _, _ => null()}
+            )
         };
 
-        gl::load_with(func);
-        unsafe{
-            gl::Enable(gl::DEPTH_TEST);
-            gl::Enable(gl::CULL_FACE);
-            gl::Enable(gl::BLEND);
-            //gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
-        }
+        VoxelEngine{glfw, window, events, player, context: Rc::new(context)}
     }
 
 
@@ -99,14 +91,6 @@ impl VoxelEngine {
         self.player.rot_pitch(dy as f32);
     }
 
-
-    pub fn draw(&mut self) {
-        unsafe {
-            gl::ClearColor(0.6, 0.8, 0.99, 1.0);
-            gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
-        }
-    }
-
     pub fn run(&mut self) {
         let mut last_update_time = 0.0;
         let mut second = 1.0;
@@ -117,22 +101,25 @@ impl VoxelEngine {
             glfwGetCursorPos(self.window.window_ptr(), &mut x1, &mut y1);
         }
 
-        let mut scene = Scene::new();
+        let mut scene = Scene::new(self.context.clone());
 
         //mesh_builder_thread is currently mostly unsynchronized 
         //TODO: remake this in safe rust which would require a bunch of arcs idk
-        let engine_ptr = self as *mut _ as u64;
-        let scene_ptr = &mut scene as *mut _ as u64;
+        struct Ptr<T>(*mut T); unsafe impl<T> Send for Ptr<T>{}
+        let player_ptr = Ptr(&mut self.player);
+        let scene_ptr = Ptr(&mut scene);
         std::thread::spawn(move|| {
-            let class_ref = unsafe{&mut *(engine_ptr as *mut VoxelEngine)};
-            let scene_ref = unsafe{&mut *(scene_ptr as *mut Scene)};
+            let player_ref = unsafe{&mut *{player_ptr}.0};
+            let scene_ref = unsafe{&mut *{scene_ptr}.0};
             loop {
-                scene_ref.mesh_builder_thread(&class_ref.player);
+                scene_ref.mesh_builder_thread(player_ref);
             }
         });
 
+        let mut n_frames = 0;
+
         while !self.window.should_close() {
-            self.draw();
+            n_frames += 1;
             scene.draw(&self.player);
             let now = unsafe{glfwGetTime()};
             let delta_time = now - last_update_time;
@@ -140,8 +127,9 @@ impl VoxelEngine {
             if second <= 0.0 {
                 unsafe{glfwSetWindowTitle(
                     self.window.window_ptr(), 
-                    format!("{}\0", (1.0/delta_time) as i32).as_ptr() as *const _
-                );}
+                    format!("{}\0", n_frames).as_ptr() as *const _
+                )};
+                n_frames = 0;
                 second = 1.0;
             }
 
@@ -153,12 +141,6 @@ impl VoxelEngine {
             scene.update(&self.player);
             self.window.swap_buffers();
             last_update_time = now;
-        }
-
-        unsafe{
-            gl::UseProgram(0);
-            gl::BindVertexArray(0);
-            gl::BindBuffer(gl::ARRAY_BUFFER, 0);
         }
     }
 }

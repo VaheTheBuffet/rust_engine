@@ -1,42 +1,38 @@
 use crate::{
-    camera::{Camera, Player}, 
+    camera::{Player}, 
     chunk::{Chunk, ChunkMesh, ChunkStatus}, 
     math, 
-    renderer, 
     settings::*, 
-    shader_program::GlobalShaderProgram, 
     util::{self, Noise}
 };
 use std::{collections::HashMap};
-use rayon::prelude::*;
 
 
 pub struct World {
-    chunks:HashMap<(i32,i32,i32), Chunk<renderer::GLVertexArray>>,
-    noise: Noise,
-    meshes:std::sync::Mutex<Vec<ChunkMesh>>
+    pub chunks:HashMap<(i32,i32,i32), Chunk>,
+    pub noise: Noise,
 }
 
 impl World {
     pub fn new() -> Self {
         let noise = Noise::new(SEED);
-        Self{chunks:HashMap::new(), noise, meshes: std::sync::Mutex::new(Vec::new())}
+        Self{chunks:HashMap::new(), noise}
     }
 
 
-    fn chunk_build_task(&self, (x,y,z):(i32,i32,i32), noise:&Noise) -> Chunk<renderer::GLVertexArray> {
-        let mut chunk = Chunk::<renderer::GLVertexArray>::new(x, y, z);
+    pub fn chunk_build_task(&self, (x,y,z):(i32,i32,i32), noise:&Noise) -> Chunk {
+        let mut chunk = Chunk::new(x, y, z);
         chunk.build_voxels(noise);
         chunk
     }
 
 
-    fn entity_build_task(&self, (x,y,z):(i32,i32,i32)) -> Vec<(i32,i32,i32,ENTITIES)> {
+    pub fn entity_build_task(&self, (x,y,z):(i32,i32,i32)) -> Vec<(i32,i32,i32,ENTITIES)> {
         self.chunks.get(&(x,y,z)).unwrap().generate_entities()
     }
 
 
-    fn mesh_build_task(&self, (x, y, z):(i32, i32, i32)) -> ChunkMesh {
+    pub fn mesh_build_task(&self, (x, y, z):(i32, i32, i32)) -> ChunkMesh {
         let chunk_cluster = ChunkCluster::new(&self, x, y, z);
         self.chunks.get(&(x,y,z)).unwrap().get_mesh(chunk_cluster)
     }
@@ -65,22 +61,6 @@ impl World {
         self.chunks.get_mut(&(cx,cy,cz)).expect(&format!(
             "no chunk at {}, {}, {}\n", cx, cy, cz
         )).set_voxel(lx, ly, lz, voxel)
-    }
-
-
-    pub fn draw(&mut self, player:&Player, shader_program: &GlobalShaderProgram) {
-        for x in player.chunk_x-RENDER_DISTANCE..=player.chunk_x+RENDER_DISTANCE {
-            for y in player.chunk_y-RENDER_DISTANCE..=player.chunk_y+RENDER_DISTANCE {
-                for z in player.chunk_z-RENDER_DISTANCE..=player.chunk_z+RENDER_DISTANCE {
-                    if let Some(chunk) = self.chunks.get(&(x,y,z)) {
-                        if chunk.status == ChunkStatus::Clean && player.is_in_frustum(chunk.center) {
-                            chunk.update_uniforms(shader_program);
-                            chunk.draw();
-                        } 
-                    }
-                }
-            }
-        }
     }
 
 
@@ -115,38 +95,6 @@ impl World {
             if let None = self.chunks.get(&pos) {true} else {false}
         }).collect::<Vec<_>>());
         (build_positions, terrain_positions, dirty_positions)
-    }
-
-
-    pub fn mesh_builder_thread(&mut self, player:&Player) {
-        let (build_positions, terrain_positions, dirty_positions) = self.promote_chunks(player);
-
-        let new_chunks: Vec<_> = build_positions.par_iter().map(
-            |&pos| {self.chunk_build_task(pos, &self.noise)}
-        ).collect();
-        for chunk in new_chunks {self.chunks.insert(chunk.pos, chunk);}
-
-        let entities: Vec<_> = terrain_positions.par_iter().map(
-            |&pos| {self.entity_build_task(pos)}
-        ).collect();
-        self.decorate(entities).expect("entity generation failed");
-
-        if dirty_positions.len() == 0 {return}
-        let new_meshes: Vec<_> = dirty_positions.par_iter().map(
-            |&pos| {self.mesh_build_task(pos)}
-        ).collect();
-
-        dirty_positions.iter().for_each(|p| self.chunks.get_mut(p).unwrap().status = ChunkStatus::Clean);
-        let mut meshes = self.meshes.lock().unwrap();
-        meshes.extend(new_meshes);
-    }
-
-
-    pub fn threaded_update_visible_chunks(&mut self) {
-        let mut meshes = self.meshes.lock().unwrap();
-        while let Some(mesh) = meshes.pop() {
-            self.chunks.get_mut(&(mesh.pos)).unwrap().build_mesh(mesh);
-        }
     }
 
 
@@ -241,13 +189,13 @@ impl Face {
 
 
 pub struct ChunkCluster<'a> {
-    center:Option<&'a Chunk<renderer::GLVertexArray>>,
-    top:Option<&'a Chunk<renderer::GLVertexArray>>,
-    bottom:Option<&'a Chunk<renderer::GLVertexArray>>,
-    right:Option<&'a Chunk<renderer::GLVertexArray>>,
-    left:Option<&'a Chunk<renderer::GLVertexArray>>,
-    front:Option<&'a Chunk<renderer::GLVertexArray>>,
-    back:Option<&'a Chunk<renderer::GLVertexArray>>
+    center:Option<&'a Chunk>,
+    top:Option<&'a Chunk>,
+    bottom:Option<&'a Chunk>,
+    right:Option<&'a Chunk>,
+    left:Option<&'a Chunk>,
+    front:Option<&'a Chunk>,
+    back:Option<&'a Chunk>
 }
 
 impl<'a> ChunkCluster<'a> {

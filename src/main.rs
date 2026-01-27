@@ -8,10 +8,11 @@ mod chunk;
 mod world;
 mod util;
 mod renderer;
+mod vulkan;
+mod opengl;
 
 fn main() {
     let mut app = window::VoxelEngine::new();
-    app.init_gl();
     app.run();
     println!();
 }

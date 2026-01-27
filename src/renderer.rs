@@ -1,8 +1,42 @@
-pub trait VertexArray {
-    fn bind(&self);
-    fn unbind(&self);
-    fn draw(&self, start:i32, end:i32);
-    fn delete(self);
+use glow::HasContext;
+
+use crate::{shader_program, opengl, vulkan};
+use std::rc::Rc;
+
+pub enum ApiCreateInfo {
+    VK,
+    GL
+}
+
+impl ApiCreateInfo {
+    fn request_api(&self) -> ApiHandle {
+        match self {
+            ApiCreateInfo::VK => {
+                ApiHandle{inner: Box::new(vulkan::VKinner::new())}
+            }
+
+            ApiCreateInfo::GL => {
+                ApiHandle{inner: Box::new(opengl::GLinner{})}
+            }
+        }
+    }
+}
+
+pub struct ApiHandle {
+    inner: Box<dyn Api>,
+}
+
+pub trait Api {
+    fn create_pipeline(&self, pipeline_info: PipelineInfo) -> Result<u32, ()>;
+    fn destroy_pipeline(&self, pipeline: u32) -> Result<(), ()>;
+    fn draw(&self, start: i32, end: i32);
+    fn draw_indexed(&self, start: i32, end: i32);
+    fn create_buffer(&self, buffer_info: u32) -> Result<u32, ()>;
+    fn destroy_buffer(&self, buffer: u32) -> Result<(), ()>;
+}
+
+pub struct PipelineInfo {
+    a: i32
 }
 
 #[derive(Default)]
@@ -25,11 +59,13 @@ impl BufferLayout {
     }
 }
 
+
 pub struct BufferElement {
     pub element_type: BufferElementType,
     pub quantity: usize,
     pub normalized: bool
 }
+
 
 pub enum BufferElementType {
     I32,
@@ -46,11 +82,11 @@ impl BufferElementType {
         }
     }
 
-    pub fn gl_type(&self) -> gl::types::GLenum {
+    pub fn gl_type(&self) -> u32 {
         match self {
-            Self::I32 => gl::INT,
-            Self::U32 => gl::FLOAT,
-            Self::F32 => gl::UNSIGNED_INT,
+            Self::I32 => glow::INT,
+            Self::U32 => glow::UNSIGNED_INT,
+            Self::F32 => glow::FLOAT,
 
         }
     }
@@ -63,99 +99,104 @@ impl BufferElementType {
 }
 
 
-pub struct VertexBuffer<T: Sized>(pub Vec<T>);
-
-impl<T> VertexBuffer<T> {
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn size(&self) -> usize {
-        self.0.len() * core::mem::size_of::<T>()
-    }
-
-    pub fn as_ptr(&self) -> *const T {
-        self.0.as_ptr()
-    }
+pub struct GLApi {
+    ctx: Rc<glow::Context>
 }
 
-
-pub struct GLVertexArray {
-    vao: u32,
-    len: usize
-}
-
-impl GLVertexArray {
-    pub fn new<T>(buf: VertexBuffer<T>, layout: BufferLayout) -> Self {
-        let mut vao = 0;
-        let mut vbo = 0;
-        let len = buf.len();
-
+impl GLApi {
+    pub fn new(ctx: Rc<glow::Context>) -> GLApi {
+        GLApi {ctx}
+    }
+    pub fn upload_buffer<T: Sized>(&self, buf: Vec<T>) -> glow::NativeBuffer {
         unsafe {
-            gl::GenVertexArrays(1, &mut vao);
-            gl::BindVertexArray(vao);
-            gl::GenBuffers(1, &mut vbo);
-            gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
-            gl::BufferData(
-                gl::ARRAY_BUFFER, 
-                buf.size() as isize, 
-                buf.as_ptr() as *const core::ffi::c_void, 
-                gl::STATIC_DRAW
+            let buffer = self.ctx.create_buffer().expect("failed to create buffer");
+            self.ctx.bind_buffer(glow::ARRAY_BUFFER, Some(buffer));
+            self.ctx.named_buffer_data_u8_slice(
+                buffer,
+                std::slice::from_raw_parts(buf.as_ptr() as _, buf.len() * size_of::<T>()), 
+                glow::STATIC_DRAW
             );
 
-            for (n, attribute) in layout.elements.iter().enumerate() {
+            buffer
+        }
+    }
+
+    pub fn bind_buffer(&self, vao: glow::VertexArray) {
+        unsafe{
+            self.ctx.bind_vertex_array(Some(vao));
+        }
+    }
+
+    pub fn create_pipeline(
+        &self, 
+        shader_program: shader_program::GLShaderProgram, 
+        layout: BufferLayout,
+        ctx: Rc<glow::Context>
+    ) -> GLPipeLine {
+        GLPipeLine{shader_program, layout, ctx}
+    }
+
+    pub fn use_pipeline(&self, pipeline: &GLPipeLine) {
+        unsafe {
+            self.ctx.use_program(Some(pipeline.shader_program.native));
+        }
+    }
+
+    pub fn draw(&self, start: i32, end: i32) {
+        unsafe {
+            self.ctx.draw_arrays(glow::TRIANGLES, start, end);
+        }
+    }
+
+    pub fn clear_screen(&self) {
+        unsafe {
+            self.ctx.clear_color(0.6, 0.8, 0.99, 1.0);
+            self.ctx.clear(glow::COLOR_BUFFER_BIT | glow::DEPTH_BUFFER_BIT);
+        }
+    }
+}
+
+
+pub struct GLPipeLine {
+    pub shader_program: shader_program::GLShaderProgram,
+    layout: BufferLayout,
+    ctx: Rc<glow::Context>
+}
+
+impl GLPipeLine {
+    pub fn associate_buffer<T>(&self, buf: glow::NativeBuffer) -> glow::VertexArray {
+        unsafe {
+            let vao = self.ctx.create_vertex_array().expect("failed to create vao");
+            self.ctx.bind_vertex_array(Some(vao));
+            self.ctx.bind_buffer(glow::ARRAY_BUFFER, Some(buf));
+
+            for (n, attribute) in self.layout.elements.iter().enumerate() {
                 if attribute.element_type.is_integral() {
-                    gl::VertexAttribIPointer(
+                    self.ctx.vertex_attrib_pointer_i32(
                         n as u32, 
                         attribute.quantity as i32, 
-                        attribute.element_type.gl_type(),
-                        layout.size() as i32,   
-                        0 as *const core::ffi::c_void
+                        attribute.element_type.gl_type(), 
+                        self.layout.size() as i32, 
+                        0
                     );
-                    gl::EnableVertexAttribArray(n as u32);
+                    self.ctx.enable_vertex_attrib_array(n as u32);
                 } else {
-                    gl::VertexAttribPointer(
+                    self.ctx.vertex_attrib_pointer_f32(
                         n as u32, 
                         attribute.quantity as i32, 
-                        attribute.element_type.gl_type(),
-                        false as u8,
-                        layout.size() as i32,   
-                        0 as *const core::ffi::c_void
+                        attribute.element_type.gl_type(), 
+                        false,
+                        self.layout.size() as i32, 
+                        0
                     );
-                    gl::EnableVertexAttribArray(n as u32);
+                    self.ctx.enable_vertex_attrib_array(n as u32);
                 }
             }
 
-            gl::BindVertexArray(0);
-            gl::BindBuffer(gl::ARRAY_BUFFER, 0);
-        }
+            self.ctx.bind_vertex_array(None);
+            self.ctx.bind_buffer(glow::ARRAY_BUFFER, None);
 
-        Self{vao, len}
-    }
-}
-
-impl VertexArray for GLVertexArray {
-    fn bind(&self) {
-        unsafe {
-            gl::BindVertexArray(self.vao);
-        }
-    }
-
-    fn unbind(&self) {
-        unsafe {
-            gl::BindVertexArray(0);
-        }
-    }
-
-    fn delete(self) {
-        unsafe{
-            gl::DeleteVertexArrays(1, &self.vao);
-        }
-    }
-
-    fn draw(&self, start:i32, end:i32) {
-        unsafe {
-            gl::DrawArrays(gl::TRIANGLES, start, end);
+            vao
         }
     }
 }

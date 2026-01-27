@@ -1,22 +1,18 @@
 use std::collections::HashMap;
-use crate::shader_program::{GlobalShaderProgram, UniformFn};
 use crate::{math};
 use crate::util::Noise;
 use crate::world::{ChunkCluster, Face};
 use crate::{settings::*};
-use crate::renderer::{self, VertexArray};
 
-pub struct Chunk<T: renderer::VertexArray> {
+pub struct Chunk {
     pub pos: (i32, i32, i32),
     pub center: (f32, f32, f32),
     pub voxels: Vec<VOXELS>,
-    pub vertex_count: i32,
     pub status: ChunkStatus,
-    pub vertex_array: Option<T>
 }
 
-impl<T: VertexArray> Chunk<T> {
-    pub fn new(x:i32, y:i32, z:i32) -> Chunk<T> {
+impl Chunk {
+    pub fn new(x:i32, y:i32, z:i32) -> Chunk {
         Chunk{
             pos:(x, y, z), 
             center: (
@@ -25,15 +21,13 @@ impl<T: VertexArray> Chunk<T> {
                 (z * CHUNK_SIZE + H_CHUNK_SIZE) as f32
             ),
             voxels:vec![VOXELS::EMPTY;CHUNK_VOL as usize], 
-            vertex_count:0, 
             status:ChunkStatus::Empty,
-            vertex_array:None
         }
     }
 
 
     #[cfg(debug_assertions)]
-    pub fn filled(x:i32, y:i32, z:i32) -> Chunk<T> {
+    pub fn filled(x:i32, y:i32, z:i32) -> Chunk {
         let voxels = vec![VOXELS::WOOD;CHUNK_VOL as usize];
         Chunk{
             pos:(x, y, z), 
@@ -43,9 +37,7 @@ impl<T: VertexArray> Chunk<T> {
                 (z * CHUNK_SIZE + H_CHUNK_SIZE) as f32
             ),
             voxels,
-            vertex_count:0, 
             status:ChunkStatus::Dirty,
-            vertex_array:None
         }
     }
 
@@ -64,20 +56,6 @@ impl<T: VertexArray> Chunk<T> {
         } else {
             Err(())
         }
-    }
-
-
-    pub fn draw(&self) {
-        if let Some(v) = &self.vertex_array {
-            v.bind();
-            v.draw(0, self.vertex_count);
-            v.unbind();
-        }
-    }
-
-
-    pub fn update_uniforms(&self, program: &GlobalShaderProgram) {
-        program.programs[0].set_uniform("m_model\0", math::get_model(self.pos));
     }
 
 
@@ -176,7 +154,6 @@ impl<T: VertexArray> Chunk<T> {
             self.build_masks(&chunk_cluster, |v| v == VOXELS::WATER)
         );
 
-        general_mesh.vertices.extend(water_mesh.vertices);
         general_mesh
     }
 
@@ -271,7 +248,7 @@ impl<T: VertexArray> Chunk<T> {
         }
 
         for (&axis_pos, plane) in greedy_meshing_planes.iter_mut() {
-            let new_data = Chunk::<T>::greedy_mesh_plane(plane, axis_pos, VOXELS::WATER, Face::Top);
+            let new_data = Chunk::greedy_mesh_plane(plane, axis_pos, VOXELS::WATER, Face::Top);
             mesh.vertices.extend(new_data);
         }
 
@@ -335,7 +312,7 @@ impl<T: VertexArray> Chunk<T> {
         for face in Face::iter() {
             for (&voxel_id, planes) in &mut greedy_meshing_planes[face as usize] {
                 for (&axis_pos, plane) in planes {
-                    let new_data = Chunk::<T>::greedy_mesh_plane(plane, axis_pos, voxel_id, face);
+                    let new_data = Chunk::greedy_mesh_plane(plane, axis_pos, voxel_id, face);
                     mesh.vertices.extend(new_data);
                 }
             }
@@ -375,72 +352,72 @@ impl<T: VertexArray> Chunk<T> {
             Face::Top => {
                 for [u0, u1, v0, v1] in quads {
                     vertices.extend([
-                        Chunk::<T>::compress_data(u0, depth+1, v1, face, voxel_id), 
-                        Chunk::<T>::compress_data(u1, depth+1, v1, face, voxel_id),
-                        Chunk::<T>::compress_data(u1, depth+1, v0, face, voxel_id),
-                        Chunk::<T>::compress_data(u1, depth+1, v0, face, voxel_id),
-                        Chunk::<T>::compress_data(u0, depth+1, v0, face, voxel_id),
-                        Chunk::<T>::compress_data(u0, depth+1, v1, face, voxel_id)
+                        Chunk::compress_data(u0, depth+1, v1, face, voxel_id), 
+                        Chunk::compress_data(u1, depth+1, v1, face, voxel_id),
+                        Chunk::compress_data(u1, depth+1, v0, face, voxel_id),
+                        Chunk::compress_data(u1, depth+1, v0, face, voxel_id),
+                        Chunk::compress_data(u0, depth+1, v0, face, voxel_id),
+                        Chunk::compress_data(u0, depth+1, v1, face, voxel_id)
                     ])
                 }
             }
             Face::Bottom => {
                 for [u0, u1, v0, v1] in quads {
                     vertices.extend([
-                        Chunk::<T>::compress_data(u0, depth, v0, face, voxel_id),
-                        Chunk::<T>::compress_data(u1, depth, v0, face, voxel_id),
-                        Chunk::<T>::compress_data(u1, depth, v1, face, voxel_id),
-                        Chunk::<T>::compress_data(u1, depth, v1, face, voxel_id),
-                        Chunk::<T>::compress_data(u0, depth, v1, face, voxel_id),
-                        Chunk::<T>::compress_data(u0, depth, v0, face, voxel_id)
+                        Chunk::compress_data(u0, depth, v0, face, voxel_id),
+                        Chunk::compress_data(u1, depth, v0, face, voxel_id),
+                        Chunk::compress_data(u1, depth, v1, face, voxel_id),
+                        Chunk::compress_data(u1, depth, v1, face, voxel_id),
+                        Chunk::compress_data(u0, depth, v1, face, voxel_id),
+                        Chunk::compress_data(u0, depth, v0, face, voxel_id)
                     ])
                 }
            }
             Face::Right => {
                 for [u0, u1, v0, v1] in quads {
                     vertices.extend([
-                        Chunk::<T>::compress_data(depth+1, u0, v1, face, voxel_id),
-                        Chunk::<T>::compress_data(depth+1, u0, v0, face, voxel_id),
-                        Chunk::<T>::compress_data(depth+1, u1, v0, face, voxel_id),
-                        Chunk::<T>::compress_data(depth+1, u1, v0, face, voxel_id),
-                        Chunk::<T>::compress_data(depth+1, u1, v1, face, voxel_id),
-                        Chunk::<T>::compress_data(depth+1, u0, v1, face, voxel_id),
+                        Chunk::compress_data(depth+1, u0, v1, face, voxel_id),
+                        Chunk::compress_data(depth+1, u0, v0, face, voxel_id),
+                        Chunk::compress_data(depth+1, u1, v0, face, voxel_id),
+                        Chunk::compress_data(depth+1, u1, v0, face, voxel_id),
+                        Chunk::compress_data(depth+1, u1, v1, face, voxel_id),
+                        Chunk::compress_data(depth+1, u0, v1, face, voxel_id),
                     ])
                 }
             }
             Face::Left => {
                 for [u0, u1, v0, v1] in quads {
                     vertices.extend([
-                        Chunk::<T>::compress_data(depth, u0, v0, face, voxel_id),
-                        Chunk::<T>::compress_data(depth, u0, v1, face, voxel_id),
-                        Chunk::<T>::compress_data(depth, u1, v1, face, voxel_id),
-                        Chunk::<T>::compress_data(depth, u1, v1, face, voxel_id),
-                        Chunk::<T>::compress_data(depth, u1, v0, face, voxel_id),
-                        Chunk::<T>::compress_data(depth, u0, v0, face, voxel_id)
+                        Chunk::compress_data(depth, u0, v0, face, voxel_id),
+                        Chunk::compress_data(depth, u0, v1, face, voxel_id),
+                        Chunk::compress_data(depth, u1, v1, face, voxel_id),
+                        Chunk::compress_data(depth, u1, v1, face, voxel_id),
+                        Chunk::compress_data(depth, u1, v0, face, voxel_id),
+                        Chunk::compress_data(depth, u0, v0, face, voxel_id)
                     ])
                 }
             }
             Face::Front => {
                 for [u0, u1, v0, v1] in quads {
                     vertices.extend([
-                        Chunk::<T>::compress_data(u0, v0, depth+1, face, voxel_id),
-                        Chunk::<T>::compress_data(u1, v0, depth+1, face, voxel_id),
-                        Chunk::<T>::compress_data(u1, v1, depth+1, face, voxel_id),
-                        Chunk::<T>::compress_data(u1, v1, depth+1, face, voxel_id),
-                        Chunk::<T>::compress_data(u0, v1, depth+1, face, voxel_id),
-                        Chunk::<T>::compress_data(u0, v0, depth+1, face, voxel_id)
+                        Chunk::compress_data(u0, v0, depth+1, face, voxel_id),
+                        Chunk::compress_data(u1, v0, depth+1, face, voxel_id),
+                        Chunk::compress_data(u1, v1, depth+1, face, voxel_id),
+                        Chunk::compress_data(u1, v1, depth+1, face, voxel_id),
+                        Chunk::compress_data(u0, v1, depth+1, face, voxel_id),
+                        Chunk::compress_data(u0, v0, depth+1, face, voxel_id)
                     ])
                 }
             }
             Face::Back => {
                 for [u0, u1, v0, v1] in quads {
                     vertices.extend([
-                        Chunk::<T>::compress_data(u1, v0, depth, face, voxel_id),
-                        Chunk::<T>::compress_data(u0, v0, depth, face, voxel_id),
-                        Chunk::<T>::compress_data(u0, v1, depth, face, voxel_id),
-                        Chunk::<T>::compress_data(u0, v1, depth, face, voxel_id),
-                        Chunk::<T>::compress_data(u1, v1, depth, face, voxel_id),
-                        Chunk::<T>::compress_data(u1, v0, depth, face, voxel_id),
+                        Chunk::compress_data(u1, v0, depth, face, voxel_id),
+                        Chunk::compress_data(u0, v0, depth, face, voxel_id),
+                        Chunk::compress_data(u0, v1, depth, face, voxel_id),
+                        Chunk::compress_data(u0, v1, depth, face, voxel_id),
+                        Chunk::compress_data(u1, v1, depth, face, voxel_id),
+                        Chunk::compress_data(u1, v0, depth, face, voxel_id),
                     ])
                 }
             }
@@ -511,12 +488,12 @@ impl<T: VertexArray> Chunk<T> {
                     let r = row.trailing_zeros();
                     y += r;
                     z = i as u32 >> 5;
-                    res.push(Chunk::<T>::compress_data(x, y+1, z+1, Face::Top, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x+1, y+1, z+1, Face::Top, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x+1, y+1, z, Face::Top, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x+1, y+1, z, Face::Top, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x, y+1, z, Face::Top, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x, y+1, z+1, Face::Top, voxel_id));
+                    res.push(Chunk::compress_data(x, y+1, z+1, Face::Top, voxel_id));
+                    res.push(Chunk::compress_data(x+1, y+1, z+1, Face::Top, voxel_id));
+                    res.push(Chunk::compress_data(x+1, y+1, z, Face::Top, voxel_id));
+                    res.push(Chunk::compress_data(x+1, y+1, z, Face::Top, voxel_id));
+                    res.push(Chunk::compress_data(x, y+1, z, Face::Top, voxel_id));
+                    res.push(Chunk::compress_data(x, y+1, z+1, Face::Top, voxel_id));
                     *row >>= r; *row >>= 1; y += 1;
                 }
                 res
@@ -530,12 +507,12 @@ impl<T: VertexArray> Chunk<T> {
                     let r = row.trailing_zeros();
                     y += r;
                     z = i as u32 >> 5;
-                    res.push(Chunk::<T>::compress_data(x, y, z, Face::Bottom, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x+1, y, z, Face::Bottom, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x+1, y, z+1, Face::Bottom, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x+1, y, z+1, Face::Bottom, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x, y, z+1, Face::Bottom, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x, y, z, Face::Bottom, voxel_id));
+                    res.push(Chunk::compress_data(x, y, z, Face::Bottom, voxel_id));
+                    res.push(Chunk::compress_data(x+1, y, z, Face::Bottom, voxel_id));
+                    res.push(Chunk::compress_data(x+1, y, z+1, Face::Bottom, voxel_id));
+                    res.push(Chunk::compress_data(x+1, y, z+1, Face::Bottom, voxel_id));
+                    res.push(Chunk::compress_data(x, y, z+1, Face::Bottom, voxel_id));
+                    res.push(Chunk::compress_data(x, y, z, Face::Bottom, voxel_id));
                     *row >>= r; *row >>= 1; y += 1;
                 }
                 res
@@ -549,12 +526,12 @@ impl<T: VertexArray> Chunk<T> {
                     x += r;
                     y = i as u32 & 0x1F;
                     z = i as u32 >> 5;
-                    res.push(Chunk::<T>::compress_data(x+1, y, z+1, Face::Right, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x+1, y, z, Face::Right, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x+1, y+1, z, Face::Right, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x+1, y+1, z, Face::Right, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x+1, y+1, z+1, Face::Right, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x+1, y, z+1, Face::Right, voxel_id));
+                    res.push(Chunk::compress_data(x+1, y, z+1, Face::Right, voxel_id));
+                    res.push(Chunk::compress_data(x+1, y, z, Face::Right, voxel_id));
+                    res.push(Chunk::compress_data(x+1, y+1, z, Face::Right, voxel_id));
+                    res.push(Chunk::compress_data(x+1, y+1, z, Face::Right, voxel_id));
+                    res.push(Chunk::compress_data(x+1, y+1, z+1, Face::Right, voxel_id));
+                    res.push(Chunk::compress_data(x+1, y, z+1, Face::Right, voxel_id));
                     *row >>= r; *row >>= 1; x+=1;
                 }
                 res
@@ -568,12 +545,12 @@ impl<T: VertexArray> Chunk<T> {
                     x += r;
                     y = i as u32 & 0x1F;
                     z = i as u32 >> 5;
-                    res.push(Chunk::<T>::compress_data(x, y, z, Face::Left, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x, y, z+1, Face::Left, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x, y+1, z+1, Face::Left, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x, y+1, z+1, Face::Left, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x, y+1, z, Face::Left, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x, y, z, Face::Left, voxel_id));
+                    res.push(Chunk::compress_data(x, y, z, Face::Left, voxel_id));
+                    res.push(Chunk::compress_data(x, y, z+1, Face::Left, voxel_id));
+                    res.push(Chunk::compress_data(x, y+1, z+1, Face::Left, voxel_id));
+                    res.push(Chunk::compress_data(x, y+1, z+1, Face::Left, voxel_id));
+                    res.push(Chunk::compress_data(x, y+1, z, Face::Left, voxel_id));
+                    res.push(Chunk::compress_data(x, y, z, Face::Left, voxel_id));
                     *row >>= r; *row >>= 1; x+=1;
                 }
                 res
@@ -587,12 +564,12 @@ impl<T: VertexArray> Chunk<T> {
                     x = i as u32 & 0x1F;
                     y = i as u32 >> 5;
                     z += r;
-                    res.push(Chunk::<T>::compress_data(x, y, z+1, Face::Front, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x+1, y, z+1, Face::Front, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x+1, y+1, z+1, Face::Front, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x+1, y+1, z+1, Face::Front, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x, y+1, z+1, Face::Front, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x, y, z+1, Face::Front, voxel_id));
+                    res.push(Chunk::compress_data(x, y, z+1, Face::Front, voxel_id));
+                    res.push(Chunk::compress_data(x+1, y, z+1, Face::Front, voxel_id));
+                    res.push(Chunk::compress_data(x+1, y+1, z+1, Face::Front, voxel_id));
+                    res.push(Chunk::compress_data(x+1, y+1, z+1, Face::Front, voxel_id));
+                    res.push(Chunk::compress_data(x, y+1, z+1, Face::Front, voxel_id));
+                    res.push(Chunk::compress_data(x, y, z+1, Face::Front, voxel_id));
                     *row >>= r; *row >>= 1; z+=1;
                 }
                 res
@@ -606,12 +583,12 @@ impl<T: VertexArray> Chunk<T> {
                     x = i as u32 & 0x1F;
                     y = i as u32 >> 5;
                     z += r;
-                    res.push(Chunk::<T>::compress_data(x+1, y, z, Face::Back, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x, y, z, Face::Back, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x, y+1, z, Face::Back, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x, y+1, z, Face::Back, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x+1, y+1, z, Face::Back, voxel_id));
-                    res.push(Chunk::<T>::compress_data(x+1, y, z, Face::Back, voxel_id));
+                    res.push(Chunk::compress_data(x+1, y, z, Face::Back, voxel_id));
+                    res.push(Chunk::compress_data(x, y, z, Face::Back, voxel_id));
+                    res.push(Chunk::compress_data(x, y+1, z, Face::Back, voxel_id));
+                    res.push(Chunk::compress_data(x, y+1, z, Face::Back, voxel_id));
+                    res.push(Chunk::compress_data(x+1, y+1, z, Face::Back, voxel_id));
+                    res.push(Chunk::compress_data(x+1, y, z, Face::Back, voxel_id));
                     *row >>= r; *row >>= 1; z+=1;
                 }
                 res
@@ -709,46 +686,21 @@ impl<T: VertexArray> Chunk<T> {
 
         res as u32
     }
-
-
-
 }
-
-impl Chunk<renderer::GLVertexArray> {
-    pub fn build_mesh(&mut self, chunk_mesh_data: ChunkMesh) {
-        let (len, vertex_data) = (chunk_mesh_data.vertices.len(), chunk_mesh_data.vertices);
-        self.vertex_count = len as i32;
-        self.status = if len > 0 {ChunkStatus::Clean} else {ChunkStatus::Empty};
-
-        let mut layout = renderer::BufferLayout::default();
-        layout.add(renderer::BufferElement{
-            element_type: renderer::BufferElementType::I32,
-            quantity: 1,
-            normalized: false
-        });
-
-        let buf = renderer::VertexBuffer(vertex_data);
-        self.vertex_array = Some(renderer::GLVertexArray::new(buf, layout));
-    }
-}
-
 
 #[derive(Default)]
 pub struct ChunkMesh {
     pub pos:(i32, i32, i32),
-    pub vertices:Vec<u32>,
-    //pub vertices_water:Vec<u32>
+    pub vertices: Vec<u32>
 }
 
 impl ChunkMesh {
     pub fn new(
         pos: (i32, i32, i32), 
         vertices: Vec<u32>, 
-        //vertices_water: Vec<u32>
     ) -> ChunkMesh {
         ChunkMesh{pos, vertices}
     }
-
 }
 
 #[derive(PartialEq, Debug)]
