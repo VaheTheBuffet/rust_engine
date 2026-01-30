@@ -1,5 +1,5 @@
 use ash::{vk, Entry, self};
-use crate:: renderer;
+use crate::renderer::{Api, Pipeline, Buffer, PipelineInfo};
 
 #[derive(Default)]
 pub struct VKinner {
@@ -30,25 +30,17 @@ impl VKinner {
     }
 }
 
-impl renderer::Api for VKinner {
-    fn create_buffer(&self, buffer_info: u32) -> Result<u32, ()> {
+impl Api for VKinner {
+    fn create_buffer(&self, buffer_info: u32) -> Result<Box<dyn Buffer>, ()> {
         todo!()
     }
 
-    fn create_pipeline(&self, pipeline_info: renderer::PipelineInfo) -> Result<u32, ()> {
-        todo!()
-    }
-
-    fn destroy_buffer(&self, buffer: u32) -> Result<(), ()> {
-        todo!()
-    }
-
-    fn destroy_pipeline(&self, id: u32) -> Result<(), ()> {
+    fn create_pipeline(&self, pipeline_info: PipelineInfo) -> Result<Box<dyn Pipeline>, ()> {
         todo!()
     }
 
     fn draw(&self, start: i32, end: i32) {
-        todo!()
+        
     }
 
     fn draw_indexed(&self, start: i32, end: i32) {

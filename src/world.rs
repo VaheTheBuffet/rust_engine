@@ -73,25 +73,32 @@ impl World {
 
 
     pub fn promote_chunks(&self, player:& camera::Player) -> (
-        Vec<(i32, i32, i32)>, Vec<(i32, i32, i32)>, Vec<(i32, i32, i32)>
-    ) {
+        Vec<(i32, i32, i32)>, Vec<(i32, i32, i32)>, Vec<(i32, i32, i32)>) 
+    {
         let (px, py, pz) = (player.chunk_x, player.chunk_y, player.chunk_z);
         let mut build_positions = Vec::<(i32, i32, i32)>::new();
         let mut dirty_positions = Vec::<(i32, i32, i32)>::new();
         let mut terrain_positions = Vec::<(i32, i32, i32)>::new();
 
-        for pos in util::render_range((px, py, pz)) {
-            if let Some(chunk) = self.chunks.get(&pos) {
-                match chunk.status {
-                    chunk::ChunkStatus::Dirty => {
+        for pos in util::render_range((px, py, pz)) 
+        {
+            if let Some(chunk) = self.chunks.get(&pos) 
+            {
+                match chunk.status 
+                {
+                    chunk::ChunkStatus::Dirty => 
+                    {
                         dirty_positions.push(pos);
                     }
-                    chunk::ChunkStatus::Terrain => {
+                    chunk::ChunkStatus::Terrain => 
+                    {
                         terrain_positions.push(pos);
                     }
                     _ => {}
                 }
-            } else {
+            } 
+            else 
+            {
                 build_positions.push(pos);
                 dirty_positions.push(pos);
                 terrain_positions.push(pos);
@@ -161,19 +168,6 @@ pub enum Face {
 
 impl Face 
 {
-    pub fn id(&self) -> i32 
-    {
-        match self 
-        {
-            Face::Top => 0,
-            Face::Bottom => 1,
-            Face::Right => 2,
-            Face::Left => 3,
-            Face::Front => 4,
-            Face::Back => 5
-        }
-    }
-
     pub fn offset(&self) -> (i32, i32, i32) 
     {
         match self 
