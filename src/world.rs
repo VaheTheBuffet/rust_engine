@@ -5,7 +5,6 @@ use std::{collections::HashMap};
 pub struct World 
 {
     pub chunks:HashMap<(i32,i32,i32), Arc<chunk::Chunk>>,
-    pub render_range: Vec<Arc<chunk::Chunk>>,
     pub noise: util::Noise,
 }
 
@@ -13,18 +12,16 @@ impl World {
     pub fn new() -> Self 
     {
         let noise = util::Noise::new(SEED);
-        World{
-            chunks:HashMap::new(),
-            render_range: Vec::new(),
-            noise}
+        World{  chunks:HashMap::new(),
+                noise}
     }
 
 
     pub fn chunk_build_task(&self, (x,y,z):(i32,i32,i32)) -> chunk::Chunk 
     {
-        let mut chunk = chunk::Chunk::new(x, y, z);
-        chunk.status = chunk::ChunkStatus::Dirty;
-        chunk.build_voxels(&self.noise)
+        chunk::Chunk::new(x, y, z)
+            .with_status(chunk::ChunkStatus::Dirty)
+            .with_build_voxels(&self.noise)
     }
 
 
@@ -63,13 +60,13 @@ impl World {
         let ly = global_y.rem_euclid(CHUNK_SIZE);
         let lz = global_z.rem_euclid(CHUNK_SIZE);
 
-        let chunk = Arc::try_unwrap(self.chunks.remove(&(cx,cy,cz)).expect(&format!(
-            "no chunk at {}, {}, {}\n", cx, cy, cz)));
-
-        if let Ok(mut inner) = chunk {
-            inner = inner.set_voxel(lx, ly, lz, voxel).unwrap();
-            self.chunks.insert((cx, cy, cz), Arc::new(inner));
-        }
+        let chunk = self.chunks.remove(&(cx,cy,cz))
+            .expect(&format!("no chunk at {}, {}, {}\n", cx, cy, cz))
+            .unwrap_arc()
+            .with_set_voxel(lx, ly, lz, voxel)
+            .unwrap()
+            .wrap_arc();
+        self.chunks.insert(chunk.pos, chunk);
 
         Ok(())
     }

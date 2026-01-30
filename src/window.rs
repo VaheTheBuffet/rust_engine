@@ -122,7 +122,6 @@ impl VoxelEngine
                 loop 
                 {
                     mesh_builder.build_mesh();
-                    std::thread::sleep(std::time::Duration::from_millis(20));
                 }
             });
 

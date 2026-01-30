@@ -1,11 +1,11 @@
 use crate::{*, world::{ChunkCluster, Face}};
 use std::collections::HashMap;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Chunk {
     pub pos: (i32, i32, i32),
     pub center: (f32, f32, f32),
-    pub voxels: Arc<Vec<VOXELS>>,
+    pub voxels: Vec<VOXELS>,
     pub status: ChunkStatus,
 }
 
@@ -18,7 +18,7 @@ impl Chunk {
                 (y * CHUNK_SIZE + H_CHUNK_SIZE) as f32, 
                 (z * CHUNK_SIZE + H_CHUNK_SIZE) as f32
             ),
-            voxels:Arc::new(vec![VOXELS::EMPTY; CHUNK_VOL as usize]), 
+            voxels:vec![VOXELS::EMPTY; CHUNK_VOL as usize], 
             status:ChunkStatus::Empty,
         }
     }
@@ -34,7 +34,7 @@ impl Chunk {
                 (y * CHUNK_SIZE + H_CHUNK_SIZE) as f32, 
                 (z * CHUNK_SIZE + H_CHUNK_SIZE) as f32
             ),
-            voxels: Arc::new(voxels),
+            voxels,
             status:ChunkStatus::Dirty,
         }
     }
@@ -46,16 +46,12 @@ impl Chunk {
     }
 
 
-    pub fn set_voxel(mut self, x:i32, y:i32, z:i32, voxel:VOXELS) -> Result<Chunk, ()> {
+    pub fn set_voxel(&mut self, x:i32, y:i32, z:i32, voxel:VOXELS) -> Result<(), ()> {
         self.status = ChunkStatus::Dirty;
         if x >= 0 && x < CHUNK_SIZE && y >= 0 && y < CHUNK_SIZE && z >= 0 && z < CHUNK_SIZE 
         {
-            let mut voxels = Arc::try_unwrap(self.voxels)
-                .expect("Multiple Owners of chunk::voxels somehow");
-            voxels[(x+z*CHUNK_SIZE+y*CHUNK_AREA) as usize] = voxel;
-            self.voxels = Arc::new(voxels);
-
-            Ok(self)
+            self.voxels[(x+z*CHUNK_SIZE+y*CHUNK_AREA) as usize] = voxel;
+            Ok(())
         } 
         else 
         {
@@ -64,10 +60,10 @@ impl Chunk {
     }
 
 
-    pub fn build_voxels(mut self, noise:&util::Noise) -> Chunk {
+    pub fn build_voxels(&mut self, noise:&util::Noise) 
+    {
         let global_pos = (
-            self.pos.0*CHUNK_SIZE, self.pos.1*CHUNK_SIZE, self.pos.2*CHUNK_SIZE
-        );
+            self.pos.0*CHUNK_SIZE, self.pos.1*CHUNK_SIZE, self.pos.2*CHUNK_SIZE);
 
         for x in 0..CHUNK_SIZE 
         {
@@ -76,12 +72,14 @@ impl Chunk {
                 let mut global_height: i32 = noise.get_height(
                     (x + global_pos.0) as f64, 
                     (z + global_pos.2) as f64);
+
                 global_height = if global_height > 0 {global_height} else {1};
+                
                 for y in 
                     std::cmp::max(-global_pos.1, 0)..
                     std::cmp::min(global_height-global_pos.1, CHUNK_SIZE)
                 {
-                    self = self.generate_terrain((x, y, z), global_pos, global_height)
+                    self.generate_terrain((x, y, z), global_pos, global_height)
                         .expect("failed to generate terrain");
                 }
             }
@@ -94,15 +92,13 @@ impl Chunk {
         {
             ChunkStatus::Dirty
         };
-
-        self
     }
 
 
     pub fn generate_terrain(
-        mut self, (x,y,z):(i32, i32, i32), (cx,cy,cz):(i32, i32, i32),
+        &mut self, (x,y,z):(i32, i32, i32), (cx,cy,cz):(i32, i32, i32),
         global_height:i32
-    ) -> Result<Chunk, ()> 
+    ) -> Result<(), ()> 
     {
         let (_, gy, _) = (cx+x,cy+y,cz+z);
         let voxel = 
@@ -118,17 +114,17 @@ impl Chunk {
             {
                 if gy == 0 
                 {
-                    self = self.set_voxel(x, y+1, z, VOXELS::WATER)?
-                        .set_voxel(x, y+2, z, VOXELS::WATER)?
-                        .set_voxel(x, y+3, z, VOXELS::WATER)?
-                        .set_voxel(x, y+4, z, VOXELS::WATER)?;
+                    self.set_voxel(x, y+1, z, VOXELS::WATER)?;
+                    self.set_voxel(x, y+2, z, VOXELS::WATER)?;
+                    self.set_voxel(x, y+3, z, VOXELS::WATER)?;
+                    self.set_voxel(x, y+4, z, VOXELS::WATER)?;
                 }
             }
             _ => {}
         }
 
-        self = self.set_voxel(x, y, z, voxel)?;
-        Ok(self)
+        self.set_voxel(x, y, z, voxel)?;
+        Ok(())
     }
 
 
@@ -706,7 +702,92 @@ impl Chunk {
 
         res as u32
     }
+
 }
+
+
+//Atomic builder pattern
+impl Chunk 
+{
+    #[inline(always)]
+    pub fn unwrap_arc(self: Arc<Self>) -> Self 
+    {
+        match Arc::try_unwrap(self)
+        {
+            Ok(chunk) => 
+            {
+                chunk
+            }
+            
+            Err(chunk) => 
+            {
+                panic!("failed gain exclusive access to chunk at {:?}", chunk.pos)
+            }
+        }
+    }
+
+
+    pub fn wrap_arc(self) -> Arc<Self> 
+    {
+        Arc::new(self)
+    }
+
+
+    pub fn with_set_voxel(mut self, x:i32, y:i32, z:i32, voxel:VOXELS) -> Result<Chunk, Chunk>
+    {
+        if x >= 0 && x < CHUNK_SIZE && y >= 0 && y < CHUNK_SIZE && z >= 0 && z < CHUNK_SIZE 
+        {
+            self.voxels[(x+z*CHUNK_SIZE+y*CHUNK_AREA) as usize] = voxel;
+            Ok(self.with_status(ChunkStatus::Dirty))
+        } 
+        else 
+        {
+            Err(self)
+        }
+    }
+
+
+    pub fn with_status(mut self, status: ChunkStatus) -> Self 
+    {
+       self.status = status;
+       self
+    }
+
+    pub fn with_build_voxels(mut self, noise:&util::Noise) -> Self
+    {
+        let global_pos = (
+            self.pos.0*CHUNK_SIZE, self.pos.1*CHUNK_SIZE, self.pos.2*CHUNK_SIZE);
+
+        for x in 0..CHUNK_SIZE 
+        {
+            for z in 0..CHUNK_SIZE 
+            {
+                let mut global_height: i32 = noise.get_height(
+                    (x + global_pos.0) as f64, 
+                    (z + global_pos.2) as f64);
+
+                global_height = if global_height > 0 {global_height} else {1};
+                
+                for y in 
+                    std::cmp::max(-global_pos.1, 0)..
+                    std::cmp::min(global_height-global_pos.1, CHUNK_SIZE)
+                {
+                    self.generate_terrain((x, y, z), global_pos, global_height)
+                        .expect("failed to generate terrain");
+                }
+            }
+        }
+        if self.voxels.iter().all(|v| *v == VOXELS::EMPTY) 
+        {
+            self.with_status(ChunkStatus::Empty)
+        } 
+        else 
+        {
+            self.with_status(ChunkStatus::Dirty)
+        }
+    }
+}
+
 
 #[derive(Default)]
 pub struct ChunkMesh {

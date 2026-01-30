@@ -13,6 +13,13 @@ pub struct Scene
     chunk_pipeline: renderer::GLPipeLine
 }
 
+pub struct MeshBuilder 
+{
+    mesh_tx: mpsc::Sender<chunk::ChunkMesh>,
+    chunk_rx: mpsc::Receiver<world::ChunkCluster>
+}
+
+
 impl Scene 
 {
     pub fn new(
@@ -60,13 +67,11 @@ impl Scene
         }
     }
 
+
     pub fn draw(&self, player:&camera::Player) 
     {
         self.api.use_pipeline(&self.chunk_pipeline);
         self.api.clear_screen();
-        //let time = std::time::Instant::now();
-        //static mut AVERAGE:std::time::Duration = std::time::Duration::from_secs(0);
-        //static mut N:f32 = 0.0;
 
         for pos in util::render_range((player.chunk_x, player.chunk_y, player.chunk_z)) 
         {
@@ -80,18 +85,14 @@ impl Scene
                 }
             }
         }
-        //print!("{:?} {:?} {}\r", unsafe{AVERAGE}, time.elapsed(), unsafe{N});
-        //unsafe{
-        //    N += 1.0;
-        //    AVERAGE = AVERAGE.mul_f32(1.0-2.0/(1.0+N)) + time.elapsed().mul_f32(2.0/(1.0+N));
-        //};
     }
+
 
     pub fn update(&mut self, player:&camera::Player) 
     {
         self.chunk_pipeline.shader_program.set_uniform("m_view", player.get_view_mat());
         self.chunk_pipeline.shader_program.set_uniform("m_proj", player.get_proj_mat());
-        for _ in 0..2
+        for _ in 0..10
         {
             if let Ok(mesh) = self.chunk_mesh_rx.try_recv()
             {
@@ -135,16 +136,11 @@ impl Scene
         {
             for p in dirty_positions.iter()
             {
-                let chunk = Arc::try_unwrap(self.world.chunks.remove(p).unwrap());
-                if let Ok(mut chunk) = chunk 
-                {
-                    chunk.status = chunk::ChunkStatus::Clean;
-                    self.world.chunks.insert(*p, Arc::new(chunk));
-                }
-                else 
-                {
-                    panic!("tried to gain exclusive access to chunk at {:?}", *p);
-                }
+                let new_chunk = self.world.chunks.remove(p).unwrap()
+                    .unwrap_arc()
+                    .with_status(chunk::ChunkStatus::Clean)
+                    .wrap_arc();
+                self.world.chunks.insert(*p, new_chunk);
             }
 
             dirty_positions.par_iter().for_each(|p|
@@ -157,23 +153,19 @@ impl Scene
 }
 
 
-pub struct MeshBuilder 
-{
-    mesh_tx: mpsc::Sender<chunk::ChunkMesh>,
-    chunk_rx: mpsc::Receiver<world::ChunkCluster>
-}
-
 impl MeshBuilder 
 {
-    pub fn new( chunk_rx: mpsc::Receiver<world::ChunkCluster>, 
-            mesh_tx: mpsc::Sender<chunk::ChunkMesh>) -> MeshBuilder
+    pub fn new( 
+        chunk_rx: mpsc::Receiver<world::ChunkCluster>, 
+        mesh_tx: mpsc::Sender<chunk::ChunkMesh>) -> MeshBuilder
     {
         MeshBuilder{mesh_tx, chunk_rx}
     }
 
     pub fn build_mesh(&self) 
     {
-        for chunk in self.chunk_rx.iter()
+        //for chunk in self.chunk_rx.iter()
+        if let Ok(chunk) = self.chunk_rx.recv()
         {
             let tx_clone = self.mesh_tx.clone();
             rayon::spawn( move|| 

@@ -1,5 +1,3 @@
-use crate::math;
-
 //SCREEN
 pub const ASPECT_RATIO:f32 = 16.0/9.0;
 pub const INV_ASPECT_RATIO:f32 = 1.0 / ASPECT_RATIO;
@@ -10,9 +8,9 @@ pub const HEIGHT:u32 = (INV_ASPECT_RATIO * (WIDTH as f32)) as u32;
 pub const NEAR:f32 = 0.1;
 pub const FAR:f32 = 1000.0;
 pub const VFOV_TAN:f32 = 0.5;
-pub const HFOV_TAN:f32 = 0.888888888889;//VFOV_TAN * ASPECT_RATIO;
-pub const VFOV_SEC:f32 = 1.3379549532;//1.0 + 0.5 * VFOV_TAN*VFOV_TAN;
-pub const HFOV_SEC:f32 = 1.67459702313;//1.0 + 0.5 * HFOV_TAN*HFOV_TAN;
+pub const HFOV_TAN:f32 = VFOV_TAN * ASPECT_RATIO;
+pub const VFOV_SEC:f32 = 1.0 + 0.5 * VFOV_TAN*VFOV_TAN;
+pub const HFOV_SEC:f32 = 1.0 + 0.5 * HFOV_TAN*HFOV_TAN;
 pub const INV_VFOV:f32 = 1.0 / VFOV_TAN;
 pub const INV_HFOV:f32 = 1.0 / HFOV_TAN;
 pub const DEPTH:f32 = FAR - NEAR;
