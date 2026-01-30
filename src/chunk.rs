@@ -1,13 +1,11 @@
+use crate::{*, world::{ChunkCluster, Face}};
 use std::collections::HashMap;
-use crate::{math};
-use crate::util::Noise;
-use crate::world::{ChunkCluster, Face};
-use crate::{settings::*};
 
+#[derive(Clone)]
 pub struct Chunk {
     pub pos: (i32, i32, i32),
     pub center: (f32, f32, f32),
-    pub voxels: Vec<VOXELS>,
+    pub voxels: Arc<Vec<VOXELS>>,
     pub status: ChunkStatus,
 }
 
@@ -20,7 +18,7 @@ impl Chunk {
                 (y * CHUNK_SIZE + H_CHUNK_SIZE) as f32, 
                 (z * CHUNK_SIZE + H_CHUNK_SIZE) as f32
             ),
-            voxels:vec![VOXELS::EMPTY;CHUNK_VOL as usize], 
+            voxels:Arc::new(vec![VOXELS::EMPTY; CHUNK_VOL as usize]), 
             status:ChunkStatus::Empty,
         }
     }
@@ -36,7 +34,7 @@ impl Chunk {
                 (y * CHUNK_SIZE + H_CHUNK_SIZE) as f32, 
                 (z * CHUNK_SIZE + H_CHUNK_SIZE) as f32
             ),
-            voxels,
+            voxels: Arc::new(voxels),
             status:ChunkStatus::Dirty,
         }
     }
@@ -48,80 +46,102 @@ impl Chunk {
     }
 
 
-    pub fn set_voxel(&mut self, x:i32, y:i32, z:i32, voxel:VOXELS) -> Result<(), ()> {
+    pub fn set_voxel(mut self, x:i32, y:i32, z:i32, voxel:VOXELS) -> Result<Chunk, ()> {
         self.status = ChunkStatus::Dirty;
-        if x >= 0 && x < CHUNK_SIZE && y >= 0 && y < CHUNK_SIZE && z >= 0 && z < CHUNK_SIZE {
-            self.voxels[(x+z*CHUNK_SIZE+y*CHUNK_AREA) as usize] = voxel;
-            Ok(())
-        } else {
+        if x >= 0 && x < CHUNK_SIZE && y >= 0 && y < CHUNK_SIZE && z >= 0 && z < CHUNK_SIZE 
+        {
+            let mut voxels = Arc::try_unwrap(self.voxels)
+                .expect("Multiple Owners of chunk::voxels somehow");
+            voxels[(x+z*CHUNK_SIZE+y*CHUNK_AREA) as usize] = voxel;
+            self.voxels = Arc::new(voxels);
+
+            Ok(self)
+        } 
+        else 
+        {
             Err(())
         }
     }
 
 
-    pub fn build_voxels(&mut self, noise:&Noise) {
+    pub fn build_voxels(mut self, noise:&util::Noise) -> Chunk {
         let global_pos = (
             self.pos.0*CHUNK_SIZE, self.pos.1*CHUNK_SIZE, self.pos.2*CHUNK_SIZE
         );
 
-        for x in 0..CHUNK_SIZE {
-            for z in 0..CHUNK_SIZE {
+        for x in 0..CHUNK_SIZE 
+        {
+            for z in 0..CHUNK_SIZE 
+            {
                 let mut global_height: i32 = noise.get_height(
                     (x + global_pos.0) as f64, 
-                    (z + global_pos.2) as f64
-                );
+                    (z + global_pos.2) as f64);
                 global_height = if global_height > 0 {global_height} else {1};
-                for y in {
-                    std::cmp::max(-global_pos.1, 0)
-                    ..std::cmp::min(global_height-global_pos.1, CHUNK_SIZE) 
-                }{
-                    _ = self.generate_terrain((x, y, z), global_pos, global_height);
+                for y in 
+                    std::cmp::max(-global_pos.1, 0)..
+                    std::cmp::min(global_height-global_pos.1, CHUNK_SIZE)
+                {
+                    self = self.generate_terrain((x, y, z), global_pos, global_height)
+                        .expect("failed to generate terrain");
                 }
             }
         }
-        self.status = if self.voxels.iter().all(|v| *v == VOXELS::EMPTY) {
+        self.status = if self.voxels.iter().all(|v| *v == VOXELS::EMPTY) 
+        {
             ChunkStatus::Empty
-        } else {ChunkStatus::Dirty}
+        } 
+        else 
+        {
+            ChunkStatus::Dirty
+        };
+
+        self
     }
 
 
     pub fn generate_terrain(
-        &mut self, (x,y,z):(i32, i32, i32), (cx,cy,cz):(i32, i32, i32),
+        mut self, (x,y,z):(i32, i32, i32), (cx,cy,cz):(i32, i32, i32),
         global_height:i32
-    ) -> Result<(), ()> {
-
+    ) -> Result<Chunk, ()> 
+    {
         let (_, gy, _) = (cx+x,cy+y,cz+z);
-        let voxel = {
+        let voxel = 
             if cy >= 50 && y > 5 {VOXELS::SNOW}
             else if gy >= 35 && gy < 50 {VOXELS::COBBLESTONE}
             else if gy >= 10 && gy < 35 && gy == global_height-1 {VOXELS::GRASS}
             else if gy >= 7 && gy < 10 {VOXELS::DIRT}
-            else {VOXELS::SAND}
-        };
+            else {VOXELS::SAND};
 
-        match voxel {
-            VOXELS::SAND => {
-                if gy == 0 {
-                    self.set_voxel(x, y+1, z, VOXELS::WATER)?;
-                    self.set_voxel(x, y+2, z, VOXELS::WATER)?;
-                    self.set_voxel(x, y+3, z, VOXELS::WATER)?;
-                    self.set_voxel(x, y+4, z, VOXELS::WATER)?;
+        match voxel 
+        {
+            VOXELS::SAND => 
+            {
+                if gy == 0 
+                {
+                    self = self.set_voxel(x, y+1, z, VOXELS::WATER)?
+                        .set_voxel(x, y+2, z, VOXELS::WATER)?
+                        .set_voxel(x, y+3, z, VOXELS::WATER)?
+                        .set_voxel(x, y+4, z, VOXELS::WATER)?;
                 }
             }
             _ => {}
         }
 
-        self.set_voxel(x, y, z, voxel)?;
-        Ok(())
+        self = self.set_voxel(x, y, z, voxel)?;
+        Ok(self)
     }
 
 
-    pub fn generate_entities(&self) -> Vec<(i32,i32,i32,ENTITIES)> {
+    pub fn generate_entities(&self) -> Vec<(i32,i32,i32,ENTITIES)> 
+    {
         let mut entities:Vec<(i32, i32, i32, ENTITIES)> = Vec::new();
         let (cx,cy,cz) = (self.pos.0*CHUNK_SIZE,self.pos.1*CHUNK_SIZE,self.pos.2*CHUNK_SIZE);
-        for x in 0..CHUNK_SIZE {
-            for y in 0..CHUNK_SIZE {
-                for z in 0..CHUNK_SIZE {
+        for x in 0..CHUNK_SIZE 
+        {
+            for y in 0..CHUNK_SIZE 
+            {
+                for z in 0..CHUNK_SIZE 
+                {
                     let voxel_global_pos = (cx+x,cy+y,cz+z);
                     let voxel = self.voxels[(x+z*CHUNK_SIZE+y*CHUNK_AREA) as usize];
                     self.add_entity(voxel_global_pos, voxel, &mut entities);
@@ -703,7 +723,7 @@ impl ChunkMesh {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 #[repr(u8)]
 pub enum ChunkStatus {
     Empty,

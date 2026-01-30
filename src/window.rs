@@ -1,24 +1,20 @@
-use std::{ptr::null, rc:: Rc};
-use glfw:: {
-    self, Action, Context, Key, fail_on_errors, ffi::{
-        GLFW_CURSOR, GLFW_CURSOR_DISABLED, GLFW_PRESS, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE, 
-        glfwGetCursorPos, glfwGetKey, glfwGetTime, glfwSetInputMode, glfwSetWindowTitle
-    }
+use glfw::{
+    self, Action, Context, Key, fail_on_errors,
 };
-use crate::{camera::{Camera, Player}, scene::Scene};
-use crate::settings::*;
-
-
-pub struct VoxelEngine {
+use crate::{*, camera::{self, Camera, Player}, scene::Scene};
+pub struct VoxelEngine 
+{
     glfw:glfw::Glfw,
     window:glfw::PWindow,
     events:glfw::GlfwReceiver<(f64, glfw::WindowEvent)>,
-    player:Player,
-    context: Rc<glow::Context>
+    player: Arc<Mutex<Player>>,
+    context:Arc<glow::Context>
 }
 
-impl VoxelEngine {
-    pub fn new() -> VoxelEngine{
+impl VoxelEngine 
+{
+    pub fn new() -> VoxelEngine
+    {
         let mut glfw = glfw::init(fail_on_errors!()).unwrap();
 
         glfw.window_hint(glfw::WindowHint::ContextVersion(4, 5));
@@ -31,114 +27,130 @@ impl VoxelEngine {
             WIDTH, HEIGHT, "Voxel Engine", glfw::WindowMode::Windowed
         ).expect("Failed to create window");
 
-        unsafe{
-            glfwSetInputMode(window.window_ptr(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-            glfwSetInputMode(window.window_ptr(), GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
-        }
+        window.set_cursor_mode(glfw::CursorMode::Disabled);
+        window.set_raw_mouse_motion(true);
 
         window.make_current();
         window.show();
         window.set_key_polling(true);
 
 
+
         let player = Player::new();
 
-        let context = unsafe {
+        let context = unsafe 
+        {
             glow::Context::from_loader_function(
-                |s: &str| match window.get_proc_address(s) {Some(f) => f as _, _ => null()}
-            )
+                |s: &str| match window.get_proc_address(s) {Some(f) => f as _, _ => ptr::null()})
         };
 
-        VoxelEngine{glfw, window, events, player, context: Rc::new(context)}
+        VoxelEngine{
+            glfw, 
+            window, 
+            events, 
+            player: std::sync::Arc::new(std::sync::Mutex::new(player)), 
+            context: std::sync::Arc::new(context)}
     }
 
 
-    pub fn handle_events(&mut self, delta_time:f32) {
+    pub fn handle_events(&mut self) -> Vec<crate::camera::PlayerEvent>
+    {
         self.glfw.poll_events();
-        for (_, event) in glfw::flush_messages(&self.events) {
-            match event {
+        for (_, event) in glfw::flush_messages(&self.events) 
+        {
+            match event 
+            {
                 glfw::WindowEvent::Key(Key::Escape, _, Action::Press, _) => {
-                    self.window.set_should_close(true)
-                },
+                    self.window.set_should_close(true);
+                    break;
+                }
                 _ => {},
             }
         }
-        unsafe{
-            if glfwGetKey(self.window.window_ptr(), Key::W as i32) == GLFW_PRESS {
-                self.player.move_forward(delta_time);
-            }
-            if glfwGetKey(self.window.window_ptr(), Key::S as i32) == GLFW_PRESS {
-                self.player.move_backward(delta_time);
-            }
-            if glfwGetKey(self.window.window_ptr(), Key::A as i32) == GLFW_PRESS {
-                self.player.move_left(delta_time);
-            }
-            if glfwGetKey(self.window.window_ptr(), Key::D as i32) == GLFW_PRESS {
-                self.player.move_right(delta_time);
-            }
-            if glfwGetKey(self.window.window_ptr(), Key::Q as i32) == GLFW_PRESS {
-                self.player.move_up(delta_time);
-            }
-            if glfwGetKey(self.window.window_ptr(), Key::E as i32) == GLFW_PRESS {
-                self.player.move_down(delta_time);
-            }
+
+        use crate::camera::PlayerEvent;
+        let mut player_events = Vec::<PlayerEvent>::new();
+        if self.window.get_key(Key::W) == Action::Press 
+        {
+            player_events.push(PlayerEvent::MoveForward);
         }
+        if self.window.get_key(Key::S) == Action::Press 
+        {
+            player_events.push(PlayerEvent::MoveBackward);
+        }
+        if self.window.get_key(Key::D) == Action::Press 
+        {
+            player_events.push(PlayerEvent::MoveRight);
+        }
+        if self.window.get_key(Key::A) == Action::Press 
+        {
+            player_events.push(PlayerEvent::MoveLeft);
+        }
+        if self.window.get_key(Key::Q) == Action::Press 
+        {
+            player_events.push(PlayerEvent::MoveUp);
+        }
+        if self.window.get_key(Key::E) == Action::Press 
+        {
+            player_events.push(PlayerEvent::MoveDown);
+        }
+
+        player_events
     }
 
 
-    pub fn handle_mouse_move(&mut self, dx:f64, dy:f64) {
-        self.player.rot_yaw(dx as f32);
-        self.player.rot_pitch(dy as f32);
+    pub fn handle_mouse_move(&mut self, dx:f64, dy:f64) -> Vec<camera::PlayerEvent> {
+        use crate::camera::PlayerEvent;
+        vec![PlayerEvent::RotYaw(dx as f32), PlayerEvent::RotPitch(dy as f32)]
     }
 
-    pub fn run(&mut self) {
+
+    pub fn run(&mut self) 
+    {
         let mut last_update_time = 0.0;
         let mut second = 1.0;
-        //unsafe{gl::PolygonMode(gl::FRONT_AND_BACK, gl::LINE)};
 
-        let (mut x1, mut y1) = (0f64, 0f64);
-        unsafe {
-            glfwGetCursorPos(self.window.window_ptr(), &mut x1, &mut y1);
-        }
+        let (mut x1, mut y1) = self.window.get_cursor_pos();
+        let (chunk_tx, chunk_rx) = std::sync::mpsc::channel::<world::ChunkCluster>();
+        let (mesh_tx, mesh_rx) = std::sync::mpsc::channel::<chunk::ChunkMesh>();
 
-        let mut scene = Scene::new(self.context.clone());
+        let mut scene = Scene::new(self.context.clone(), mesh_rx, chunk_tx);
+        let mesh_builder = scene::MeshBuilder::new(chunk_rx, mesh_tx);
 
-        //mesh_builder_thread is currently mostly unsynchronized 
-        //TODO: remake this in safe rust which would require a bunch of arcs idk
-        struct Ptr<T>(*mut T); unsafe impl<T> Send for Ptr<T>{}
-        let player_ptr = Ptr(&mut self.player);
-        let scene_ptr = Ptr(&mut scene);
-        std::thread::spawn(move|| {
-            let player_ref = unsafe{&mut *{player_ptr}.0};
-            let scene_ref = unsafe{&mut *{scene_ptr}.0};
-            loop {
-                scene_ref.mesh_builder_thread(player_ref);
-            }
-        });
+        std::thread::spawn( move|| 
+            {
+                loop 
+                {
+                    mesh_builder.build_mesh();
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                }
+            });
 
         let mut n_frames = 0;
 
-        while !self.window.should_close() {
+        while !self.window.should_close() 
+        {
             n_frames += 1;
-            scene.draw(&self.player);
-            let now = unsafe{glfwGetTime()};
+            scene.draw(&self.player.lock().unwrap());
+            let now = self.glfw.get_time();
             let delta_time = now - last_update_time;
             second -= delta_time;
-            if second <= 0.0 {
-                unsafe{glfwSetWindowTitle(
-                    self.window.window_ptr(), 
-                    format!("{}\0", n_frames).as_ptr() as *const _
-                )};
+            if second <= 0.0 
+            {
+                self.window.set_title(&format!("{}", n_frames));
                 n_frames = 0;
                 second = 1.0;
             }
 
             let (x0, y0) = (x1, y1);
-            unsafe{glfwGetCursorPos(self.window.window_ptr(), &mut x1, &mut y1);}
-            self.handle_mouse_move(x1-x0, y1-y0);
-            self.handle_events(delta_time as f32);
-            self.player.update();
-            scene.update(&self.player);
+            (x1, y1) = self.window.get_cursor_pos();
+
+            let mut player_events = self.handle_events();
+            player_events.extend(self.handle_mouse_move(x1 - x0, y1 - y0));
+
+            let mut player = self.player.lock().unwrap();
+            player.update(player_events.as_slice(), delta_time as f32);
+            scene.update(&player);
             self.window.swap_buffers();
             last_update_time = now;
         }

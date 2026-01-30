@@ -13,11 +13,11 @@ pub trait UniformFn<T>: ShaderProgram {
 
 pub struct GLShaderProgram {
     pub native: glow::NativeProgram,
-    ctx: Rc<glow::Context>
+    ctx: std::sync::Arc<glow::Context>
 }
 
 impl GLShaderProgram {
-    pub fn new(vertex_shader_source: &str, fragment_shader_source: &str, ctx: Rc<glow::Context>) -> Self {
+    pub fn new(vertex_shader_source: &str, fragment_shader_source: &str, ctx: std::sync::Arc<glow::Context>) -> Self {
         unsafe {
             let vertex_shader = ctx.create_shader(glow::VERTEX_SHADER).expect("failed to create vertex shader");
             ctx.shader_source(vertex_shader, vertex_shader_source);

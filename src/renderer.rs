@@ -2,6 +2,7 @@ use glow::HasContext;
 
 use crate::{shader_program, opengl, vulkan};
 use std::rc::Rc;
+use std::sync::Arc;
 
 pub enum ApiCreateInfo {
     VK,
@@ -100,11 +101,11 @@ impl BufferElementType {
 
 
 pub struct GLApi {
-    ctx: Rc<glow::Context>
+    ctx: Arc<glow::Context>
 }
 
 impl GLApi {
-    pub fn new(ctx: Rc<glow::Context>) -> GLApi {
+    pub fn new(ctx: Arc<glow::Context>) -> GLApi {
         GLApi {ctx}
     }
     pub fn upload_buffer<T: Sized>(&self, buf: Vec<T>) -> glow::NativeBuffer {
@@ -131,7 +132,7 @@ impl GLApi {
         &self, 
         shader_program: shader_program::GLShaderProgram, 
         layout: BufferLayout,
-        ctx: Rc<glow::Context>
+        ctx: Arc<glow::Context>
     ) -> GLPipeLine {
         GLPipeLine{shader_program, layout, ctx}
     }
@@ -160,7 +161,7 @@ impl GLApi {
 pub struct GLPipeLine {
     pub shader_program: shader_program::GLShaderProgram,
     layout: BufferLayout,
-    ctx: Rc<glow::Context>
+    ctx: Arc<glow::Context>
 }
 
 impl GLPipeLine {

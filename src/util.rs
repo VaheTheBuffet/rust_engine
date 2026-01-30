@@ -1,5 +1,6 @@
 use noise::{NoiseFn, Perlin};
 use crate::settings::*;
+use std::sync::{Arc, atomic::{AtomicU8, AtomicBool, Ordering}};
 
 pub struct Noise {
     perlin: Perlin,
@@ -81,4 +82,36 @@ pub fn test_render_range() -> impl Iterator<Item = (i32, i32, i32)> {
 #[cfg(debug_assertions)]
 pub fn test_border_range() -> impl Iterator<Item = (i32, i32, i32)> { 
     [].into_iter()
+}
+
+#[inline(always)]
+pub const fn chunk_center_from_global_index((x, y, z): (i32, i32, i32)) -> (f32, f32, f32)
+{
+    (
+        (x * CHUNK_SIZE + H_CHUNK_SIZE) as f32, 
+        (y * CHUNK_SIZE + H_CHUNK_SIZE) as f32, 
+        (z * CHUNK_SIZE + H_CHUNK_SIZE) as f32
+    )
+}
+
+#[derive(Clone)]
+pub struct Semaphore {
+    status: std::sync::Arc<std::sync::atomic::AtomicBool>
+}
+
+impl Semaphore {
+    pub fn new() -> Semaphore {
+        Semaphore {status: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false))}
+    }
+
+    pub fn signal(&self) {
+        //self.status.fetch_not(std::sync::atomic::Ordering::Relaxed);
+        self.status.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn wait(&self) {
+        while !self.status.load(std::sync::atomic::Ordering::Relaxed) {}
+        //self.signal();
+        self.status.store(false, std::sync::atomic::Ordering::Relaxed);
+    }
 }
