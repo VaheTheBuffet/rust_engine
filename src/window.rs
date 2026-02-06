@@ -114,7 +114,9 @@ impl VoxelEngine
         let (chunk_tx, chunk_rx) = std::sync::mpsc::channel::<world::ChunkCluster>();
         let (mesh_tx, mesh_rx) = std::sync::mpsc::channel::<chunk::ChunkMesh>();
 
-        let mut scene = Scene::new(self.context.clone(), mesh_rx, chunk_tx);
+        let api = renderer::ApiCreateInfo::GL.request_api(&mut self.window);
+
+        let mut scene = Scene::new(api, mesh_rx, chunk_tx);
         let mesh_builder = scene::MeshBuilder::new(chunk_rx, mesh_tx);
 
         std::thread::spawn( move|| 

@@ -11,7 +11,6 @@ mod renderer;
 mod vulkan;
 mod opengl;
 
-
 pub use settings::*;
 pub use std::ptr;
 pub use std::sync::{Mutex, Arc, Weak, mpsc};

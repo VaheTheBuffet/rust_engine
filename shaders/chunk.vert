@@ -1,9 +1,12 @@
 #version 450 core
+
 layout (location = 0) in int compressed_data;
 
-uniform mat4 m_model;
-uniform mat4 m_view;
-uniform mat4 m_proj;
+layout(std140, binding = 0) uniform UniformBufferObject {
+    mat4 m_model;
+    mat4 m_view;
+    mat4 m_proj;
+} ubo;    
 
 layout(location = 0) flat out float shading;
 layout(location = 1) flat out int voxel_id;
@@ -47,6 +50,6 @@ void main()
 {
     unpack_data(compressed_data);
     shading = get_shading(face_id);
-    vertex_pos = (m_model * vec4(pos, 1.0)).xyz;
-    gl_Position = m_proj * m_view * m_model * vec4(pos, 1.0);
+    vertex_pos = (vec4(pos, 1.0) * ubo.m_model).xyz;
+    gl_Position = vec4(pos, 1.0) * ubo.m_model * ubo.m_view * ubo.m_proj;
 };

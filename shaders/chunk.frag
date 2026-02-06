@@ -19,9 +19,9 @@ vec2 uv[6] = vec2[6](
 
 //#define TESTING
 #ifdef TESTING
-uniform sampler2D test;
+layout(binding = 1) uniform sampler2D test;
 #else
-uniform sampler2DArray tex_array;
+layout(binding = 1) uniform sampler2DArray tex_array;
 #endif
 
 void main()

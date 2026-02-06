@@ -702,7 +702,6 @@ impl Chunk {
 
         res as u32
     }
-
 }
 
 

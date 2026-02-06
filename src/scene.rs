@@ -1,16 +1,27 @@
 use crate::*;
-use std::collections::HashMap;
-use glow::HasContext;
+use std::{collections::HashMap, io::Write, mem::offset_of};
+use image::EncodableLayout;
 use rayon::prelude::*;
 
-pub struct Scene 
+
+pub struct Transform 
 {
-    api: renderer::GLApi,
+    model: [f32; 16],
+    view: [f32; 16],
+    proj: [f32; 16]
+}
+
+
+pub struct Scene<'a>
+{
+    api: renderer::ApiHandle,
     world: world::World,
     chunk_mesh_rx: mpsc::Receiver<chunk::ChunkMesh>,
     chunk_tx: mpsc::Sender<world::ChunkCluster>,
-    meshes: HashMap<(i32,i32,i32), (glow::VertexArray, usize)>,
-    chunk_pipeline: renderer::GLPipeLine
+    meshes: HashMap<(i32,i32,i32), (Box<dyn renderer::Buffer>, i32)>,
+    chunk_pipeline: Box<dyn renderer::Pipeline>,
+    command_buffer: Box<dyn renderer::CommandBuffer<'a> +'a>,
+    uniform_buffer: Box<dyn renderer::Buffer>
 }
 
 pub struct MeshBuilder 
@@ -20,40 +31,71 @@ pub struct MeshBuilder
 }
 
 
-impl Scene 
+impl<'a> Scene<'a>
 {
     pub fn new(
-        ctx: std::sync::Arc<glow::Context>, 
+        mut api: renderer::ApiHandle,
         chunk_mesh_rx: mpsc::Receiver<chunk::ChunkMesh>,
-        chunk_tx: mpsc::Sender<world::ChunkCluster>) -> Scene 
+        chunk_tx: mpsc::Sender<world::ChunkCluster>) -> Scene<'a>
     {
-        let chunk_vert = std::fs::read_to_string("./shaders/chunk.vert")
-            .expect("failed to find shader file");
-        let chunk_frag = std::fs::read_to_string("./shaders/chunk.frag")
-            .expect("failed to find shader file");
-        let shader_program = shader_program::GLShaderProgram::new(
-            &chunk_vert,
-            &chunk_frag,
-            ctx.clone());
-
-        unsafe 
-        {
-            ctx.enable(glow::DEPTH_TEST);
-            ctx.enable(glow::CULL_FACE);
-            ctx.enable(glow::BLEND);
-        }
-
-        shader_program.load_texture("test");
-        shader_program.load_texture_array("spritesheet", settings::NUM_TEXTURES);
-        let mut layout = renderer::BufferLayout::default();
+        let mut layout = renderer::VertexLayout::new(0);
         layout.add(
             renderer::BufferElement{
                 element_type: renderer::BufferElementType::U32, 
                 quantity: 1, 
-                normalized: false});
+                normalized: false
+            }
+        );
 
-        let api = renderer::GLApi::new(ctx.clone());
-        let chunk_pipeline = api.create_pipeline(shader_program, layout, ctx.clone());
+        let shader_info = renderer::ShaderInfo::Text(
+            &std::fs::read_to_string("./shaders/chunk.vert")
+                .expect("failed to read shader"), 
+            &std::fs::read_to_string("./shaders/chunk.frag")
+                .expect("failed to read shader")
+        );
+
+        let uniform_descriptor = renderer::DescriptorInfo::Uniform{
+            size: size_of::<Transform>() as i32 as _, 
+            bind_point: 0
+        };
+
+        let texture_descriptor = renderer::DescriptorInfo::Texture {
+            bind_point: 1
+        };
+
+        let mut pipeline_info = renderer::PipelineInfo::default();
+        pipeline_info.vbo_layout = layout;
+        pipeline_info.shader_info = shader_info;
+        pipeline_info.descriptor_layouts = vec![uniform_descriptor, texture_descriptor];
+
+        let chunk_pipeline = api.inner.create_pipeline(pipeline_info)
+            .expect("failed to create chunk pipeline");
+        
+        let mut command_buffer = api.inner.create_command_buffer()
+            .expect("failed to create command buffer");
+
+        let uniform_buffer = api.inner.create_buffer(renderer::BufferMemory::Dynamic)
+            .expect("failed to create uniform buffer");
+        uniform_buffer.allocate(size_of::<Transform>() as i32);
+
+        let tex_array_data = image::open("./assets/spritesheet.png")
+            .expect("failed to read spritesheet")
+            .into_rgba8();
+
+        let mut texture = api.inner.create_texture(
+            renderer::TextureCreateInfo{
+                width: tex_array_data.width().try_into().unwrap(),
+                height: <u32 as TryInto<i32>>::try_into(tex_array_data.height()).unwrap() / NUM_TEXTURES,
+                layers: NUM_TEXTURES}
+        ).expect("failed to create texture resource");
+
+        texture.texture_data(tex_array_data.into_raw().as_slice());
+
+        command_buffer.bind_pipeline(unsafe{&*((&*chunk_pipeline) as *const _)});
+        command_buffer.bind_buffer(uniform_buffer.as_ref(), 0);
+        command_buffer.bind_texture(texture.as_ref(), 1);
+
+        uniform_buffer.buffer_sub_data(PROJECTION.as_bytes(), offset_of!(Transform, proj) as i32);
 
         let world = world::World::new();
         Scene
@@ -63,25 +105,25 @@ impl Scene
             chunk_mesh_rx,
             chunk_tx,
             meshes: HashMap::new(),
-            chunk_pipeline
+            chunk_pipeline,
+            command_buffer,
+            uniform_buffer
         }
     }
 
 
     pub fn draw(&self, player:&camera::Player) 
     {
-        self.api.use_pipeline(&self.chunk_pipeline);
-        self.api.clear_screen();
-
+        self.command_buffer.submit();
         for pos in util::render_range((player.chunk_x, player.chunk_y, player.chunk_z)) 
         {
             if let Some((mesh, len)) = self.meshes.get(&pos) 
             {
                 if *len > 0 && player.is_in_frustum(util::chunk_center_from_global_index(pos)) 
                 {
-                    self.chunk_pipeline.shader_program.set_uniform("m_model", math::get_model(pos));
-                    self.api.bind_buffer(*mesh);
-                    self.api.draw(0, *len as i32);
+                    self.uniform_buffer.buffer_sub_data(math::get_model(pos).as_bytes(), offset_of!(Transform, model) as i32);
+                    self.command_buffer.bind_vertex_buffer(mesh.as_ref());
+                    self.command_buffer.draw(0, *len as i32);
                 }
             }
         }
@@ -90,16 +132,21 @@ impl Scene
 
     pub fn update(&mut self, player:&camera::Player) 
     {
-        self.chunk_pipeline.shader_program.set_uniform("m_view", player.get_view_mat());
-        self.chunk_pipeline.shader_program.set_uniform("m_proj", player.get_proj_mat());
+        self.uniform_buffer.buffer_sub_data(player.get_view_mat().as_bytes(), offset_of!(Transform, view) as i32);
         for _ in 0..10
         {
             if let Ok(mesh) = self.chunk_mesh_rx.try_recv()
             {
                 let len = mesh.vertices.len();
-                let buf = self.api.upload_buffer(mesh.vertices);
-                let vao = self.chunk_pipeline.associate_buffer::<u32>(buf);
-                self.meshes.insert(mesh.pos, (vao, len));
+                let buf = self.api.inner.create_buffer(renderer::BufferMemory::ReadOnly)
+                    .expect("failed to create vertex buffer");
+
+                unsafe 
+                {
+                    buf.allocate(len as i32 * 4);
+                    buf.buffer_sub_data(std::slice::from_raw_parts(std::mem::transmute(mesh.vertices.as_ptr()), len * 4), 0);
+                }
+                self.meshes.insert(mesh.pos, (buf, len as i32));
             }
         }
 
