@@ -503,7 +503,7 @@ impl<'a> CommandBuffer<'a> for GLCommandBuffer<'a>
 }
 
 
-unsafe extern "C" fn unloaded_function() 
+unsafe extern "system" fn unloaded_function() 
 {
-    panic!("Function Not Loaded!");
+    panic!("OpenGL Function Not Loaded!");
 }

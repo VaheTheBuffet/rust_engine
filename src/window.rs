@@ -7,8 +7,7 @@ pub struct VoxelEngine
     glfw:glfw::Glfw,
     window:glfw::PWindow,
     events:glfw::GlfwReceiver<(f64, glfw::WindowEvent)>,
-    player: Arc<Mutex<Player>>,
-    context:Arc<glow::Context>
+    player: Player,
 }
 
 impl VoxelEngine 
@@ -34,22 +33,14 @@ impl VoxelEngine
         window.show();
         window.set_key_polling(true);
 
-
-
         let player = Player::new();
-
-        let context = unsafe 
-        {
-            glow::Context::from_loader_function(
-                |s: &str| match window.get_proc_address(s) {Some(f) => f as _, _ => ptr::null()})
-        };
 
         VoxelEngine{
             glfw, 
             window, 
             events, 
-            player: std::sync::Arc::new(std::sync::Mutex::new(player)), 
-            context: std::sync::Arc::new(context)}
+            player,
+        }
     }
 
 
@@ -114,7 +105,7 @@ impl VoxelEngine
         let (chunk_tx, chunk_rx) = std::sync::mpsc::channel::<world::ChunkCluster>();
         let (mesh_tx, mesh_rx) = std::sync::mpsc::channel::<chunk::ChunkMesh>();
 
-        let api = renderer::ApiCreateInfo::GL.request_api(&mut self.window);
+        let api = renderer::ApiCreateInfo::GL.request_api(&mut self.window, &self.glfw);
 
         let mut scene = Scene::new(api, mesh_rx, chunk_tx);
         let mesh_builder = scene::MeshBuilder::new(chunk_rx, mesh_tx);
@@ -132,7 +123,7 @@ impl VoxelEngine
         while !self.window.should_close() 
         {
             n_frames += 1;
-            scene.draw(&self.player.lock().unwrap());
+            scene.draw(&self.player);
             let now = self.glfw.get_time();
             let delta_time = now - last_update_time;
             second -= delta_time;
@@ -149,9 +140,8 @@ impl VoxelEngine
             let mut player_events = self.handle_events();
             player_events.extend(self.handle_mouse_move(x1 - x0, y1 - y0));
 
-            let mut player = self.player.lock().unwrap();
-            player.update(player_events.as_slice(), delta_time as f32);
-            scene.update(&player);
+            self.player.update(player_events.as_slice(), delta_time as f32);
+            scene.update(&self.player);
             self.window.swap_buffers();
             last_update_time = now;
         }

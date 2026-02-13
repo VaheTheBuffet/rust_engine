@@ -1,5 +1,5 @@
 use crate::*;
-use std::{collections::HashMap, io::Write, mem::offset_of};
+use std::{collections::HashMap, mem::offset_of};
 use image::EncodableLayout;
 use rayon::prelude::*;
 
@@ -143,8 +143,7 @@ impl<'a> Scene<'a>
 
                 unsafe 
                 {
-                    buf.allocate(len as i32 * 4);
-                    buf.buffer_sub_data(std::slice::from_raw_parts(std::mem::transmute(mesh.vertices.as_ptr()), len * 4), 0);
+                    buf.buffer_data(std::slice::from_raw_parts(std::mem::transmute(mesh.vertices.as_ptr()), len * 4));
                 }
                 self.meshes.insert(mesh.pos, (buf, len as i32));
             }

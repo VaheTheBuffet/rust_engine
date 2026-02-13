@@ -1,5 +1,4 @@
 use std::any::Any;
-
 use crate::{opengl, vulkan};
 
 
@@ -9,10 +8,10 @@ pub enum ApiCreateInfo {
 }
 
 impl ApiCreateInfo {
-    pub fn request_api(&self, pwindow: &mut glfw::PWindow) -> ApiHandle {
+    pub fn request_api(&self, pwindow: &mut glfw::PWindow, glfw: &glfw::Glfw) -> ApiHandle {
         match self {
             ApiCreateInfo::VK => {
-                ApiHandle{inner: Box::new(vulkan::VKinner::new())}
+                ApiHandle{inner: Box::new(vulkan::VKinner::new(pwindow, glfw))}
             }
 
             ApiCreateInfo::GL => {
@@ -26,7 +25,6 @@ pub struct ApiHandle {
     pub inner: Box<dyn Api>,
 }
 
-
 pub trait Api {
     fn create_pipeline(&self, pipeline_info: PipelineInfo) -> Result<Box<dyn Pipeline>, ()>;
     fn create_command_buffer<'a>(&self) -> Result<Box<dyn CommandBuffer<'a> + 'a>, ()>;
@@ -34,11 +32,9 @@ pub trait Api {
     fn create_texture(&mut self, texture_info: TextureCreateInfo) -> Result<Box<dyn Texture>, ()>;
 }
 
-
 pub trait Pipeline {
     fn as_any(&self) -> &dyn Any;
 }
-
 
 pub trait CommandBuffer<'a> {
     fn draw(&self, start:i32, end:i32);
@@ -50,7 +46,6 @@ pub trait CommandBuffer<'a> {
     fn submit(&self);
 }
 
-
 pub trait Buffer {
     fn buffer_data(&self, data: &[u8]);
     fn allocate(&self, size: i32);
@@ -58,12 +53,10 @@ pub trait Buffer {
     fn as_any(&self) -> &dyn Any;
 }
 
-
 pub trait Texture {
     fn texture_data(&mut self, data: &[u8]);
     fn as_any(&self) -> &dyn Any;
 }
-
 
 #[derive(Default)]
 pub enum ShaderInfo<'a> {
@@ -72,7 +65,6 @@ pub enum ShaderInfo<'a> {
     #[default]
     Default
 }
-
 
 #[derive(Default, Clone, Copy, Debug)]
 pub enum DescriptorInfo {
@@ -91,12 +83,10 @@ pub enum DescriptorInfo {
     Default
 }
 
-
 pub enum BufferMemory{
     ReadOnly,
     Dynamic,
 }
-
 
 pub struct TextureCreateInfo{
     pub width: i32,
@@ -104,14 +94,12 @@ pub struct TextureCreateInfo{
     pub layers: i32,
 }
 
-
 #[derive(Default)]
 pub struct PipelineInfo<'a> {
     pub vbo_layout: VertexLayout,
     pub shader_info: ShaderInfo<'a>,
     pub descriptor_layouts: Vec<DescriptorInfo>
 }
-
 
 #[derive(Default)]
 pub struct VertexLayout {
@@ -142,13 +130,11 @@ impl VertexLayout {
     }
 }
 
-
 pub struct BufferElement {
     pub element_type: BufferElementType,
     pub quantity: usize,
     pub normalized: bool
 }
-
 
 pub enum BufferElementType {
     I32,
