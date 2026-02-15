@@ -11,7 +11,7 @@ impl ApiCreateInfo {
     pub fn request_api(&self, pwindow: &mut glfw::PWindow, glfw: &glfw::Glfw) -> ApiHandle {
         match self {
             ApiCreateInfo::VK => {
-                ApiHandle{inner: Box::new(vulkan::VKinner::new(pwindow, glfw))}
+                ApiHandle{inner: Box::new(vulkan::VKInner::new(pwindow, glfw))}
             }
 
             ApiCreateInfo::GL => {
