@@ -1,5 +1,5 @@
 use std::any::Any;
-use crate::{opengl, vulkan};
+use crate::{opengl, vk::vulkan};
 
 
 pub enum ApiCreateInfo {
@@ -118,7 +118,7 @@ impl VertexLayout {
         self.elements.push(element);
     }
 
-    //None for full size
+    //None for full size or idx to stop at desired attribute
     pub fn size(&self, idx:Option<usize>) -> usize 
     {
         let mut size = 0;

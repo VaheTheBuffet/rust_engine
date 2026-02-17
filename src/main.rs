@@ -8,8 +8,8 @@ mod chunk;
 mod world;
 mod util;
 mod renderer;
-mod vulkan;
 mod opengl;
+mod vk;
 
 pub use settings::*;
 pub use std::ptr;
