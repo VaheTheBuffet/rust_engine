@@ -3,6 +3,8 @@ use crate::renderer;
 use ash::vk;
 
 pub(super) struct Pipeline {
+    pub(super) framebuffer: Framebuffer,
+    pub(super) render_pass: RenderPass,
     pub(super) handle: vk::Pipeline,
     device: Arc<device::Device>
 }
@@ -18,7 +20,13 @@ impl Drop for Pipeline {
 }
 
 impl Pipeline {
-    fn new(device: Arc<device::Device>, info: renderer::PipelineInfo) -> Pipeline 
+    pub(super) fn new(
+        device: Arc<device::Device>, 
+        color_image_view: vk::ImageView,
+        depth_image_view: vk::ImageView,
+        info: renderer::PipelineInfo, 
+        swapchain: &swapchain::Swapchain
+    ) -> Pipeline 
     {
         let renderer::ShaderInfo::SpirV(vert, frag) = info.shader_info else {
             panic!("spir-v shaders required for vulkan")
@@ -39,8 +47,6 @@ impl Pipeline {
 
         let shader_stages = [vert_shader_stage_info, frag_shader_stage_info];
 
-        //dynamic state should go here if we so desire
-
         let vertex_binding_description = vk::VertexInputBindingDescription::default()
             .binding(info.vbo_layout.bind_point as u32)
             .stride(info.vbo_layout.size(None) as u32)
@@ -60,7 +66,7 @@ impl Pipeline {
                 (renderer::BufferElementType::U32, 1) => vk::Format::R32_UINT,
                 (renderer::BufferElementType::U32, 2) => vk::Format::R32G32_UINT,
                 (renderer::BufferElementType::U32, 3) => vk::Format::R32G32B32_UINT,
-                _ => panic!("vertex attribute format not supported")
+                _ => panic!("vertex attribute format not supported {:?}, {:?}", attribute.element_type, attribute.quantity)
             };
 
             vertex_attribute_descriptions.push(
@@ -79,10 +85,21 @@ impl Pipeline {
             .topology(vk::PrimitiveTopology::TRIANGLE_LIST)
             .primitive_restart_enable(false);
 
-        //I don't know why I set this without any viewports
+        let viewport = vk::Viewport::default()
+            .x(0.0)
+            .y(0.0)
+            .width(swapchain.extent.width as f32)
+            .height(swapchain.extent.height as f32)
+            .min_depth(0.0)
+            .max_depth(1.0);
+
+        let scissor = vk::Rect2D::default()
+            .offset(vk::Offset2D::default().x(0).y(0))
+            .extent(swapchain.extent);
+
         let viewport_state = vk::PipelineViewportStateCreateInfo::default()
-            .viewport_count(1)
-            .scissor_count(1);
+            .viewports(std::slice::from_ref(&viewport))
+            .scissors(std::slice::from_ref(&scissor));
 
         let rasterizer = vk::PipelineRasterizationStateCreateInfo::default()
             .rasterizer_discard_enable(false)
@@ -151,6 +168,10 @@ impl Pipeline {
         let pipeline_layout = unsafe{device.device.create_pipeline_layout(&pipeline_layout_create_info, None)}
             .expect("failed to create pipeline layout");
 
+        let render_pass = RenderPass::new(device.clone(), swapchain.format, swapchain.format);
+
+        let framebuffer = Framebuffer::new(device.clone(), swapchain, color_image_view, depth_image_view, &render_pass);
+
         let pipeline_create_info = vk::GraphicsPipelineCreateInfo::default()
             .stages(shader_stages.as_slice())
             .vertex_input_state(&vertex_input_info)
@@ -160,9 +181,9 @@ impl Pipeline {
             .multisample_state(&multisample_state)
             .depth_stencil_state(&depth_stencil)
             .color_blend_state(&color_blend_attachment)
-            //.dynamic_state(dynamic_state)
+            //.dynamic_state(dynamic_state) //WE SHOULD CONSIDER USING DYNAMIC STATE FOR VIEWPORT AND SCISSOR
             .layout(pipeline_layout)
-            //render_pass(render_pass)
+            .render_pass(render_pass.handle)
             .subpass(0)
             .base_pipeline_handle(vk::Pipeline::null())
             .base_pipeline_index(-1);
@@ -172,12 +193,11 @@ impl Pipeline {
                 vk::PipelineCache::null(), 
                 std::slice::from_ref(&pipeline_create_info), 
                 None)
-        }.expect("failed to create graphics pipeline");
+        }.expect("failed to create graphics pipeline")[0];
 
-        todo!()
+        Pipeline {handle: pipeline, device, render_pass, framebuffer}
     }
 }
-
 
 impl renderer::Pipeline for Pipeline {
     fn as_any(&self) -> &dyn std::any::Any 
@@ -285,5 +305,54 @@ impl RenderPass {
             .expect("failed to create render pass");
 
         RenderPass {handle: render_pass, device}
+    }
+}
+
+pub(super) struct Framebuffer {
+    device: Arc<device::Device>,
+    handles: Vec<vk::Framebuffer>
+}
+
+impl Drop for Framebuffer {
+    fn drop(&mut self) {
+        unsafe 
+        {
+            for &framebuffer in &self.handles 
+            {
+                self.device.device.destroy_framebuffer(framebuffer, None);
+            }
+        }
+    }
+}
+
+impl Framebuffer
+{
+    fn new(
+        device: Arc<device::Device>, 
+        swapchain: &swapchain::Swapchain, 
+        color_image_view: vk::ImageView,
+        depth_image_view: vk::ImageView,
+        render_pass: &RenderPass
+    ) -> Framebuffer 
+    {
+        let mut framebuffers: Vec<vk::Framebuffer> = Vec::new();
+
+        for i in 0..swapchain.image_views.len() 
+        {
+            let attachments = [color_image_view, depth_image_view, swapchain.image_views[i]];
+            let framebuffer_info = vk::FramebufferCreateInfo::default()
+                .attachments(attachments.as_slice())
+                .render_pass(render_pass.handle)
+                .width(swapchain.extent.width)
+                .height(swapchain.extent.height)
+                .layers(1);
+
+
+            framebuffers.push(
+                unsafe{device.device.create_framebuffer(&framebuffer_info, None)}
+                    .expect("failed to create framebuffer"));
+        }
+
+        Framebuffer {device, handles: framebuffers}
     }
 }

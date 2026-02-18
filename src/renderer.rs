@@ -136,6 +136,7 @@ pub struct BufferElement {
     pub normalized: bool
 }
 
+#[derive(Debug)]
 pub enum BufferElementType {
     I32,
     U32,

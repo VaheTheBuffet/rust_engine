@@ -1,5 +1,5 @@
 use ash::{self, Entry, vk};
-use crate::renderer::*;
+use crate::{renderer::*, vk::image::Image};
 use super::*;
 
 
@@ -59,6 +59,10 @@ impl Drop for Instance
 
 pub struct VKInner {
     //device level
+    color_image: image::Image,
+    color_image_view: image::ImageView,
+    depth_image: image::Image,
+    depth_image_view: image::ImageView,
     queues: device::Queues,
     swapchain: swapchain::Swapchain,
     graphics_pool: command_pool::CommandPool,
@@ -89,7 +93,55 @@ impl VKInner {
         let swapchain = swapchain::create(&instance, device.clone(), physical_device, surface.handle, window);
         let (graphics_pool, transfer_pool) = command_pool::create_command_pools(&instance, device.clone(), physical_device, surface.handle);
 
+        let screen_extent = vk::Extent3D::default()
+            .depth(0)
+            .width(swapchain.extent.width)
+            .height(swapchain.extent.height);
+
+        let color_image = Image::new(
+            &instance, 
+            device.clone(), 
+            screen_extent, 
+            1, 
+            vk::SampleCountFlags::TYPE_1, 
+            swapchain.format, 
+            vk::ImageTiling::OPTIMAL, 
+            vk::ImageUsageFlags::TRANSIENT_ATTACHMENT | vk::ImageUsageFlags::COLOR_ATTACHMENT, 
+            vk::MemoryPropertyFlags::DEVICE_LOCAL, 
+            physical_device);
+
+        let color_image_view = image::ImageView::new(
+            device.clone(), 
+            color_image.handle, 
+            swapchain.format, 
+            vk::ImageAspectFlags::COLOR, 
+            1);
+        
+        let depth_format = image::find_depth_format(&instance, physical_device);
+        let depth_image = Image::new(
+            &instance, 
+            device.clone(), 
+            screen_extent, 
+            1, 
+            vk::SampleCountFlags::TYPE_1, 
+            depth_format, 
+            vk::ImageTiling::OPTIMAL, 
+            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+            vk::MemoryPropertyFlags::DEVICE_LOCAL, 
+            physical_device);
+
+        let depth_image_view = image::ImageView::new(
+            device.clone(), 
+            depth_image.handle, 
+            depth_format, 
+            vk::ImageAspectFlags::DEPTH, 
+            1);
+
         VKInner { 
+            color_image,
+            color_image_view,
+            depth_image,
+            depth_image_view,
             swapchain,
             device,
             instance,
@@ -121,7 +173,14 @@ impl VKInner {
 impl Api for VKInner {
     fn create_pipeline(&self, pipeline_info: PipelineInfo) -> Result<Box<dyn Pipeline>, ()> 
     {
-        todo!()
+        let pipeline = pipeline::Pipeline::new(
+            self.device.clone(), 
+            self.color_image_view.handle, 
+            self.depth_image_view.handle, 
+            pipeline_info, 
+            &self.swapchain);
+
+        Ok(Box::new(pipeline))
     }
 
     fn create_command_buffer<'a>(&self) -> Result<Box<dyn CommandBuffer<'a> + 'a>, ()>

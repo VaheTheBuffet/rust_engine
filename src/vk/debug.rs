@@ -1,5 +1,4 @@
-use ash::{ext::debug_utils, vk};
-use super::*;
+use ash::vk;
 
 pub(super) const VALIDATION_LAYERS: [&std::ffi::CStr; 1] = [c"VK_LAYER_KHRONOS_validation"];
 #[cfg(debug_assertions)]

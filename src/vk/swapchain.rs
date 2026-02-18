@@ -3,11 +3,12 @@ use super::*;
 use std::sync::Arc;
 
 pub(super) struct Swapchain {
-    swapchain: vk::SwapchainKHR,
-    format: vk::Format,
-    images: Vec<vk::Image>,
-    image_views: Vec<vk::ImageView>,
-    device: Arc<super::device::Device>
+    pub(super) swapchain: vk::SwapchainKHR,
+    pub(super) format: vk::Format,
+    pub(super) images: Vec<vk::Image>,
+    pub(super) image_views: Vec<vk::ImageView>,
+    pub(super) device: Arc<super::device::Device>,
+    pub(super) extent: vk::Extent2D
 }
 
 impl Drop for Swapchain 
@@ -90,7 +91,8 @@ pub(super) fn create(
         format: surface_format.format, 
         images, 
         image_views, 
-        device
+        device,
+        extent
     }
 }
 

@@ -8,5 +8,6 @@ pub(crate) mod command_pool;
 pub(crate) mod surface;
 pub(crate) mod buffer;
 pub(crate) mod pipeline;
+pub(crate) mod command_buffer;
 
 use std::sync::Arc;

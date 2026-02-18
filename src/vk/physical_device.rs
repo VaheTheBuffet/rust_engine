@@ -98,4 +98,3 @@ impl QueueFamilyIndices
         [self.graphics, self.present, self.transfer]
     }
 }
-
