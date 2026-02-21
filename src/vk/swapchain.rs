@@ -3,10 +3,10 @@ use super::*;
 use std::sync::Arc;
 
 pub(super) struct Swapchain {
+    pub(super) image_views: Vec<image::ImageView>,
+    pub(super) images: Vec<vk::Image>,
     pub(super) swapchain: vk::SwapchainKHR,
     pub(super) format: vk::Format,
-    pub(super) images: Vec<vk::Image>,
-    pub(super) image_views: Vec<vk::ImageView>,
     pub(super) device: Arc<super::device::Device>,
     pub(super) extent: vk::Extent2D
 }
@@ -17,10 +17,6 @@ impl Drop for Swapchain
     {
         unsafe 
         {
-            for i in 0..self.images.len() 
-            {
-                self.device.device.destroy_image_view(self.image_views[i], None);
-            }
             self.device.swapchain.destroy_swapchain(self.swapchain, None);
         }
     }
@@ -28,7 +24,7 @@ impl Drop for Swapchain
 
 pub(super) fn create(
     instance: &vulkan::Instance, 
-    device: crate::Arc<device::Device>, 
+    device: Arc<device::Device>, 
     physical_device: vk::PhysicalDevice,
     surface: vk::SurfaceKHR,
     window: &glfw::PWindow
@@ -84,30 +80,30 @@ pub(super) fn create(
     let images = unsafe{device.swapchain.get_swapchain_images(swapchain)}
         .expect("failed to create swapchain images");
 
-    let image_views = create_swapchain_views(&device, surface_format.format, images.as_slice());
+    let image_views = create_swapchain_views(device.clone(), surface_format.format, images.as_slice());
 
     Swapchain {
+        image_views, 
+        images, 
         swapchain, 
         format: surface_format.format, 
-        images, 
-        image_views, 
         device,
-        extent
+        extent,
     }
 }
 
 pub(super) fn create_swapchain_views(
-    device: &device::Device, 
+    device: Arc<device::Device>, 
     format: vk::Format, 
     images: &[vk::Image]
-) -> Vec<vk::ImageView>
+) -> Vec<image::ImageView>
 {
-    let mut image_views: Vec<vk::ImageView> = Vec::new();
+    let mut image_views: Vec<image::ImageView> = Vec::new();
 
     for i in 0..images.len() 
     {
         image_views.push(
-            image::create_image_view(device, images[i], format, vk::ImageAspectFlags::COLOR, 1)
+            image::ImageView::new(device.clone(), images[i], format, vk::ImageAspectFlags::COLOR, 1)
         );
     }
 

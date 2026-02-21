@@ -6,7 +6,9 @@ pub(super) struct Pipeline {
     pub(super) framebuffer: Framebuffer,
     pub(super) render_pass: RenderPass,
     pub(super) handle: vk::Pipeline,
-    device: Arc<device::Device>
+    pub(super) descriptor_set_layout: vk::DescriptorSetLayout,
+    pub(super) descriptor_pool: vk::DescriptorPool,
+    device: Arc<device::Device>,
 }
 
 impl Drop for Pipeline {
@@ -14,6 +16,8 @@ impl Drop for Pipeline {
     {
         unsafe 
         {
+            self.device.device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
+            self.device.device.destroy_descriptor_pool(self.descriptor_pool, None);
             self.device.device.destroy_pipeline(self.handle, None);
         }     
     }
@@ -21,7 +25,7 @@ impl Drop for Pipeline {
 
 impl Pipeline {
     pub(super) fn new(
-        device: Arc<device::Device>, 
+        api: &vulkan::VKInner,
         color_image_view: vk::ImageView,
         depth_image_view: vk::ImageView,
         info: renderer::PipelineInfo, 
@@ -32,8 +36,8 @@ impl Pipeline {
             panic!("spir-v shaders required for vulkan")
         };
 
-        let vert_module = create_shader_module(&device, vert);
-        let frag_module = create_shader_module(&device, frag);
+        let vert_module = create_shader_module(&api.device, vert);
+        let frag_module = create_shader_module(&api.device, frag);
 
         let vert_shader_stage_info = vk::PipelineShaderStageCreateInfo::default()
             .stage(vk::ShaderStageFlags::VERTEX)
@@ -108,7 +112,8 @@ impl Pipeline {
             .cull_mode(vk::CullModeFlags::BACK)
             .front_face(vk::FrontFace::COUNTER_CLOCKWISE);
 
-        let multisample_state = vk::PipelineMultisampleStateCreateInfo::default();
+        let multisample_state = vk::PipelineMultisampleStateCreateInfo::default()
+            .rasterization_samples(vk::SampleCountFlags::TYPE_1);
 
         let color_blend_attachment = vk::PipelineColorBlendAttachmentState::default()
             .color_write_mask(
@@ -135,42 +140,73 @@ impl Pipeline {
                 .max_depth_bounds(1.0);
 
         let mut layout_bindings: Vec<vk::DescriptorSetLayoutBinding> = Vec::new();
-        for descriptor in info.descriptor_layouts {
+        let mut pool_sizes: Vec<vk::DescriptorPoolSize> = Vec::new();
+
+        for descriptor in info.descriptor_layouts.iter() 
+        {
             layout_bindings.push(
                 match descriptor {
-                    renderer::DescriptorInfo::Vertex {stride: _, bind_point} => {
+                    renderer::DescriptorInfo::Uniform {bind_point, size:_} => {
                         vk::DescriptorSetLayoutBinding::default()
                             .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
                             .descriptor_count(1)
                             .stage_flags(vk::ShaderStageFlags::VERTEX)
-                            .binding(bind_point as u32)
+                            .binding(*bind_point as u32)
                     }
                     renderer::DescriptorInfo::Texture {bind_point} => {
                         vk::DescriptorSetLayoutBinding::default()
                             .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
                             .descriptor_count(1)
                             .stage_flags(vk::ShaderStageFlags::FRAGMENT)
-                            .binding(bind_point as u32)
+                            .binding(*bind_point as u32)
                     }
-                    _ => panic!("unsupported descriptor")
+                    _ => {panic!("descriptor can not be of type {:?}", descriptor)}
                 });
         }
 
         let layout_info = vk::DescriptorSetLayoutCreateInfo::default()
             .bindings(layout_bindings.as_slice());
 
-        let descriptor_set_layout = unsafe{device.device.create_descriptor_set_layout(&layout_info, None)}
+        let descriptor_set_layout = unsafe{api.device.device.create_descriptor_set_layout(&layout_info, None)}
             .expect("failed to create descriptor set layout");
+
+        for descriptor in info.descriptor_layouts 
+        {
+            pool_sizes.push(
+                match descriptor {
+                    renderer::DescriptorInfo::Uniform{bind_point:_, size:_} => {
+                        vk::DescriptorPoolSize::default()
+                            .ty(vk::DescriptorType::UNIFORM_BUFFER)
+                            .descriptor_count(vulkan::VKInner::FRAMES_IN_FLIGHT)
+                    }
+
+                    renderer::DescriptorInfo::Texture{bind_point:_} => {
+                        vk::DescriptorPoolSize::default()
+                            .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                            .descriptor_count(vulkan::VKInner::FRAMES_IN_FLIGHT)
+                    }
+
+                    _ => {panic!("descriptor con not be of type {:?}", descriptor)}
+                }
+            );
+        }
+
+        let descriptor_pool_create_info = vk::DescriptorPoolCreateInfo::default()
+            .pool_sizes(&pool_sizes)
+            .max_sets(vulkan::VKInner::FRAMES_IN_FLIGHT);
+
+        let descriptor_pool = unsafe{api.device.device.create_descriptor_pool(&descriptor_pool_create_info, None)}
+            .expect("failed to create descriptor pool");
 
         let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::default()
             .set_layouts(std::slice::from_ref(&descriptor_set_layout));
 
-        let pipeline_layout = unsafe{device.device.create_pipeline_layout(&pipeline_layout_create_info, None)}
+        let pipeline_layout = unsafe{api.device.device.create_pipeline_layout(&pipeline_layout_create_info, None)}
             .expect("failed to create pipeline layout");
 
-        let render_pass = RenderPass::new(device.clone(), swapchain.format, swapchain.format);
+        let render_pass = RenderPass::new(api.device.clone(), swapchain.format, api.depth_format);
 
-        let framebuffer = Framebuffer::new(device.clone(), swapchain, color_image_view, depth_image_view, &render_pass);
+        let framebuffer = Framebuffer::new(api.device.clone(), swapchain, color_image_view, depth_image_view, &render_pass);
 
         let pipeline_create_info = vk::GraphicsPipelineCreateInfo::default()
             .stages(shader_stages.as_slice())
@@ -189,13 +225,29 @@ impl Pipeline {
             .base_pipeline_index(-1);
 
         let pipeline = unsafe{
-            device.device.create_graphics_pipelines(
+            api.device.device.create_graphics_pipelines(
                 vk::PipelineCache::null(), 
                 std::slice::from_ref(&pipeline_create_info), 
                 None)
         }.expect("failed to create graphics pipeline")[0];
 
-        Pipeline {handle: pipeline, device, render_pass, framebuffer}
+
+        unsafe 
+        {
+            api.device.device.destroy_shader_module(vert_module, None);
+            api.device.device.destroy_shader_module(frag_module, None);
+            api.device.device.destroy_pipeline_layout(pipeline_layout, None);
+            api.device.device.destroy_descriptor_set_layout(descriptor_set_layout, None);
+        }
+
+        Pipeline {
+            handle: pipeline, 
+            device: api.device.clone(), 
+            render_pass, 
+            framebuffer, 
+            descriptor_pool, 
+            descriptor_set_layout
+        }
     }
 }
 
@@ -242,22 +294,22 @@ impl RenderPass {
         let color_attachment = vk::AttachmentDescription::default()
             .format(swapchain_image_format)
             .initial_layout(vk::ImageLayout::UNDEFINED)
-            .final_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
             .load_op(vk::AttachmentLoadOp::CLEAR)
             .store_op(vk::AttachmentStoreOp::STORE)
             .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
             .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
             .samples(vk::SampleCountFlags::TYPE_1);
 
-        let color_attachment_resolve = vk::AttachmentDescription::default()
-            .format(swapchain_image_format)
-            .initial_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-            .load_op(vk::AttachmentLoadOp::DONT_CARE)
-            .store_op(vk::AttachmentStoreOp::STORE)
-            .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
-            .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
-            .samples(vk::SampleCountFlags::TYPE_1);
+//        let color_attachment_resolve = vk::AttachmentDescription::default()
+//            .format(swapchain_image_format)
+//            .initial_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+//            .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+//            .load_op(vk::AttachmentLoadOp::DONT_CARE)
+//            .store_op(vk::AttachmentStoreOp::STORE)
+//            .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
+//            .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
+//            .samples(vk::SampleCountFlags::TYPE_1);
 
         let depth_attachment = vk::AttachmentDescription::default()
             .format(depth_format)
@@ -277,16 +329,16 @@ impl RenderPass {
             .attachment(1)
             .layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 
-        let color_attachment_resolve_ref = vk::AttachmentReference::default()
-            .attachment(2)
-            .layout(vk::ImageLayout::PRESENT_SRC_KHR);
+//        let color_attachment_resolve_ref = vk::AttachmentReference::default()
+//            .attachment(2)
+//            .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
 
         let subpass = vk::SubpassDescription::default()
             .color_attachments(std::slice::from_ref(&color_attachment_ref))
             .depth_stencil_attachment(&depth_attachment_ref)
-            .resolve_attachments(std::slice::from_ref(&color_attachment_resolve_ref));
+            /* .resolve_attachments(std::slice::from_ref(&color_attachment_resolve_ref))*/;
 
-        let attachments = [color_attachment, depth_attachment, color_attachment_resolve];
+        let attachments = [color_attachment, depth_attachment, /*color_attachment_resolve*/];
 
         let dependency = vk::SubpassDependency::default()
             .src_subpass(vk::SUBPASS_EXTERNAL)
@@ -339,7 +391,7 @@ impl Framebuffer
 
         for i in 0..swapchain.image_views.len() 
         {
-            let attachments = [color_image_view, depth_image_view, swapchain.image_views[i]];
+            let attachments = [swapchain.image_views[i].handle, depth_image_view];
             let framebuffer_info = vk::FramebufferCreateInfo::default()
                 .attachments(attachments.as_slice())
                 .render_pass(render_pass.handle)

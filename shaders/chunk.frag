@@ -1,8 +1,8 @@
 #version 450 core
 
 layout(location = 0) flat in float shading;
-layout(location = 1) flat in int voxel_id;
-layout(location = 2) flat in int face_id;
+layout(location = 1) flat in uint voxel_id;
+layout(location = 2) flat in uint face_id;
 layout(location = 3) in vec3 vertex_pos;
 
 layout(location = 0) out vec4 FragColor;
@@ -34,4 +34,4 @@ void main()
 #endif
 
     FragColor *= shading;
-};
+}

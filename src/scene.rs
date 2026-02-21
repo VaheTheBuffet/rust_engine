@@ -47,10 +47,10 @@ impl<'a> Scene<'a>
             }
         );
 
-        let shader_info = renderer::ShaderInfo::Text(
-            &std::fs::read_to_string("./shaders/chunk.vert")
+        let shader_info = renderer::ShaderInfo::SpirV(
+            &std::fs::read("./shaders/chunk_vert.spv")
                 .expect("failed to read shader"), 
-            &std::fs::read_to_string("./shaders/chunk.frag")
+            &std::fs::read("./shaders/chunk_frag.spv")
                 .expect("failed to read shader")
         );
 
@@ -74,8 +74,9 @@ impl<'a> Scene<'a>
         let mut command_buffer = api.inner.create_command_buffer()
             .expect("failed to create command buffer");
 
-        let uniform_buffer = api.inner.create_buffer(renderer::BufferMemory::Dynamic)
-            .expect("failed to create uniform buffer");
+        let uniform_buffer = api.inner.create_buffer(
+            renderer::BufferCreateInfo::Dynamic(size_of::<Transform>())
+        ).expect("failed to create uniform buffer");
         uniform_buffer.allocate(size_of::<Transform>() as i32);
 
         let tex_array_data = image::open("./assets/spritesheet.png")
@@ -138,7 +139,8 @@ impl<'a> Scene<'a>
             if let Ok(mesh) = self.chunk_mesh_rx.try_recv()
             {
                 let len = mesh.vertices.len();
-                let buf = self.api.inner.create_buffer(renderer::BufferMemory::ReadOnly)
+                let buf = self.api.inner.create_buffer(
+                    renderer::BufferCreateInfo::ReadOnly(len * size_of_val(&mesh.vertices[0])))
                     .expect("failed to create vertex buffer");
 
                 unsafe 

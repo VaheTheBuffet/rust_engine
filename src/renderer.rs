@@ -28,7 +28,7 @@ pub struct ApiHandle {
 pub trait Api {
     fn create_pipeline(&self, pipeline_info: PipelineInfo) -> Result<Box<dyn Pipeline>, ()>;
     fn create_command_buffer<'a>(&self) -> Result<Box<dyn CommandBuffer<'a> + 'a>, ()>;
-    fn create_buffer(&self, buffer_info: BufferMemory) -> Result<Box<dyn Buffer>, ()>;
+    fn create_buffer(&self, buffer_info: BufferCreateInfo) -> Result<Box<dyn Buffer>, ()>;
     fn create_texture(&mut self, texture_info: TextureCreateInfo) -> Result<Box<dyn Texture>, ()>;
 }
 
@@ -41,9 +41,9 @@ pub trait CommandBuffer<'a> {
     fn draw_indexed(&self, start:i32, end:i32);
     fn bind_pipeline(&mut self, pipeline: &'a dyn Pipeline);
     fn bind_vertex_buffer(&self, buf: &dyn Buffer); 
-    fn bind_buffer(&self, buf: &dyn Buffer, source_binding: usize);
-    fn bind_texture(&self, tex: &dyn Texture, source_binding: usize);
+    fn bind_descriptors(&self, descriptors: &[DescriptorWriteInfo]);
     fn submit(&self);
+    fn begin(&self);
 }
 
 pub trait Buffer {
@@ -83,15 +83,25 @@ pub enum DescriptorInfo {
     Default
 }
 
-pub enum BufferMemory{
-    ReadOnly,
-    Dynamic,
+pub enum DescriptorWriteInfo<'a> {
+    Uniform{
+        handle: &'a dyn Buffer
+    },
+    Texture{
+        handle: &'a dyn Texture
+    }
 }
 
-pub struct TextureCreateInfo{
+pub enum BufferCreateInfo{
+    ReadOnly(usize),
+    Dynamic(usize),
+}
+
+pub struct TextureCreateInfo<'a>{
     pub width: i32,
     pub height: i32,
     pub layers: i32,
+    pub pixels: &'a [u8]
 }
 
 #[derive(Default)]

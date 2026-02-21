@@ -50,7 +50,7 @@ impl Api for GLinner
         Ok(Box::new(GLCommandBuffer::new(self.gl.clone())))
     }
 
-    fn create_buffer(&self, buffer_memory: BufferMemory) -> Result<Box<dyn Buffer>, ()> 
+    fn create_buffer(&self, buffer_memory: BufferCreateInfo) -> Result<Box<dyn Buffer>, ()> 
     {
         Ok(Box::new(GLBuffer::new(self.gl.clone(), buffer_memory)))
     }
@@ -153,18 +153,18 @@ impl Texture for GLTexture
 pub struct GLBuffer{
     gl: Arc<glow::Context>,
     buf: glow::NativeBuffer,
-    memory: BufferMemory
+    info: BufferCreateInfo,
 }
 
 impl GLBuffer
 {
-    fn new(gl: Arc<glow::Context>, memory: BufferMemory) -> GLBuffer
+    fn new(gl: Arc<glow::Context>, info: BufferCreateInfo) -> GLBuffer
     {
         let buf = unsafe {
             gl.create_buffer().expect("failed to create buffer")
         };
 
-        GLBuffer{gl, buf, memory}
+        GLBuffer{gl, buf, info}
     }
 }
 
@@ -186,14 +186,14 @@ impl Buffer for GLBuffer
     {
         unsafe 
         {
-            match self.memory 
+            match self.info 
             {
-                BufferMemory::Dynamic =>
+                BufferCreateInfo::Dynamic(_) =>
                 {
                     self.gl.named_buffer_data_u8_slice(self.buf, data, glow::DYNAMIC_DRAW);
                 }
 
-                BufferMemory::ReadOnly =>
+                BufferCreateInfo::ReadOnly(_) =>
                 {
                     self.gl.named_buffer_data_u8_slice(self.buf, data, glow::STATIC_DRAW);
                 }
@@ -205,14 +205,14 @@ impl Buffer for GLBuffer
     {
         unsafe 
         {
-            match self.memory 
+            match self.info 
             {
-                BufferMemory::Dynamic =>
+                BufferCreateInfo::Dynamic(_) =>
                 {
                     self.gl.named_buffer_data_size(self.buf, size, glow::DYNAMIC_DRAW);
                 }
 
-                BufferMemory::ReadOnly =>
+                BufferCreateInfo::ReadOnly(_) =>
                 {
                     self.gl.named_buffer_data_size(self.buf, size, glow::STATIC_DRAW);
                 }
@@ -353,7 +353,7 @@ impl GLPipeline
         }
         else
         { 
-            panic!("spir-v shaders not yet supported for opengl");
+            panic!("spir-v shaders not yet supported for opengl blame glow");
         }
     }
     
@@ -400,42 +400,6 @@ impl<'a> GLCommandBuffer<'_>
     {
         GLCommandBuffer{gl, pipeline: None}
     }
-}
-
-impl<'a> CommandBuffer<'a> for GLCommandBuffer<'a>
-{
-    fn bind_pipeline(&mut self, pipeline: &'a dyn Pipeline) 
-    {
-        let pipeline = pipeline.as_any().downcast_ref::<GLPipeline>()
-            .expect("wrong type of pipeline for api");
-        
-        unsafe 
-        {
-            self.gl.bind_vertex_array(Some(pipeline.vao));
-            self.gl.use_program(Some(pipeline.program));
-        }
-
-        self.pipeline = Some(pipeline);
-    }
-
-    
-    fn bind_vertex_buffer(&self, buf: &dyn Buffer)
-    {
-        let pipeline = self.pipeline.expect("bind pipeline before binding buffer");
-
-        let buffer = buf.as_any().downcast_ref::<GLBuffer>()
-            .expect("wrong type of buffer for api");
-
-        let DescriptorInfo::Vertex{stride, bind_point} = pipeline.vertex_descriptor else {
-            panic!("vertex layout not set");
-        };
-
-        unsafe 
-        {
-            self.gl.bind_vertex_buffer(bind_point as u32, Some(buffer.buf), 0, stride as i32);
-        }
-    }
-
 
     fn bind_buffer(&self, buf: &dyn Buffer, source_binding: usize)
     {
@@ -472,7 +436,60 @@ impl<'a> CommandBuffer<'a> for GLCommandBuffer<'a>
             self.gl.bind_texture_unit(bind_point as _, Some(texture.tex));
         }
     }
+}
 
+
+impl<'a> CommandBuffer<'a> for GLCommandBuffer<'a>
+{
+    fn bind_pipeline(&mut self, pipeline: &'a dyn Pipeline) 
+    {
+        let pipeline = pipeline.as_any().downcast_ref::<GLPipeline>()
+            .expect("wrong type of pipeline for api");
+        
+        unsafe 
+        {
+            self.gl.bind_vertex_array(Some(pipeline.vao));
+            self.gl.use_program(Some(pipeline.program));
+        }
+
+        self.pipeline = Some(pipeline);
+    }
+
+    
+    fn bind_vertex_buffer(&self, buf: &dyn Buffer)
+    {
+        let pipeline = self.pipeline.expect("bind pipeline before binding buffer");
+
+        let buffer = buf.as_any().downcast_ref::<GLBuffer>()
+            .expect("wrong type of buffer for api");
+
+        let DescriptorInfo::Vertex{stride, bind_point} = pipeline.vertex_descriptor else {
+            panic!("vertex layout not set");
+        };
+
+        unsafe 
+        {
+            self.gl.bind_vertex_buffer(bind_point as u32, Some(buffer.buf), 0, stride as i32);
+        }
+    }
+
+    fn bind_descriptors(&self, descriptors: &[DescriptorWriteInfo]) {
+
+        for (i, descriptor) in descriptors.iter().enumerate() {
+            match descriptor {
+
+                &renderer::DescriptorWriteInfo::Texture {handle} => 
+                {
+                    self.bind_texture(handle, i);
+                }
+
+                &renderer::DescriptorWriteInfo::Uniform {handle} => 
+                {
+                    self.bind_buffer(handle, i);
+                }
+            }
+        }
+    }
 
     fn draw(&self, start:i32, end:i32) 
     {
@@ -494,6 +511,16 @@ impl<'a> CommandBuffer<'a> for GLCommandBuffer<'a>
 
     fn submit(&self) 
     {
+        //I don't really know what to put in this function
+        unsafe 
+        {
+            self.gl.flush();
+        }
+    }
+
+
+    fn begin(&self) 
+    {
         unsafe 
         {
             self.gl.clear_color(0.6, 0.8, 0.99, 1.0);
@@ -503,6 +530,7 @@ impl<'a> CommandBuffer<'a> for GLCommandBuffer<'a>
 }
 
 
+#[unsafe(no_mangle)]
 unsafe extern "system" fn unloaded_function() 
 {
     panic!("OpenGL Function Not Loaded!");

@@ -59,23 +59,29 @@ impl Drop for Instance
 
 pub struct VKInner {
     //device level
-    color_image: image::Image,
-    color_image_view: image::ImageView,
-    depth_image: image::Image,
-    depth_image_view: image::ImageView,
-    queues: device::Queues,
-    swapchain: swapchain::Swapchain,
-    graphics_pool: command_pool::CommandPool,
-    transfer_pool: command_pool::CommandPool,
-    physical_device: vk::PhysicalDevice,
-    device: Arc<device::Device>,
+    pub(super)color_image: image::Image,
+    pub(super)color_image_view: image::ImageView,
+    pub(super)depth_image: image::Image,
+    pub(super)depth_image_view: image::ImageView,
+    pub(super)queues: device::Queues,
+    pub(super)swapchain: swapchain::Swapchain,
+    pub(super)graphics_pool: command_pool::CommandPool,
+    pub(super)transfer_pool: command_pool::CommandPool,
+    pub(super)physical_device: vk::PhysicalDevice,
+    pub(super)device: Arc<device::Device>,
     //instance level
-    debug_utils_messenger: debug::DebugUtilsMessenger,
-    surface: surface::Surface,
-    instance: Arc<Instance>,
+    pub(super)debug_utils_messenger: debug::DebugUtilsMessenger,
+    pub(super)surface: surface::Surface,
+    pub(super)instance: Arc<Instance>,
+
+
+    //data
+    pub(super) depth_format: vk::Format,
 }
 
 impl VKInner {
+    pub(super) const FRAMES_IN_FLIGHT:u32 = 2;
+
     pub fn new(window: &glfw::PWindow, glfw: &glfw::Glfw) -> VKInner 
     {
         let entry = unsafe {
@@ -151,6 +157,7 @@ impl VKInner {
             queues,
             graphics_pool,
             transfer_pool,
+            depth_format
         }
     }
 
@@ -174,7 +181,7 @@ impl Api for VKInner {
     fn create_pipeline(&self, pipeline_info: PipelineInfo) -> Result<Box<dyn Pipeline>, ()> 
     {
         let pipeline = pipeline::Pipeline::new(
-            self.device.clone(), 
+            self, 
             self.color_image_view.handle, 
             self.depth_image_view.handle, 
             pipeline_info, 
@@ -188,7 +195,7 @@ impl Api for VKInner {
         todo!()
     }
 
-    fn create_buffer(&self, buffer_info: BufferMemory) -> Result<Box<dyn Buffer>, ()> 
+    fn create_buffer(&self, info: BufferCreateInfo) -> Result<Box<dyn Buffer>, ()> 
     {
         todo!()
     }

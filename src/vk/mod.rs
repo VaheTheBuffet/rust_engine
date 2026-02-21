@@ -9,5 +9,6 @@ pub(crate) mod surface;
 pub(crate) mod buffer;
 pub(crate) mod pipeline;
 pub(crate) mod command_buffer;
+pub(crate) mod texture;
 
 use std::sync::Arc;
