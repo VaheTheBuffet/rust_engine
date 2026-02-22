@@ -3,13 +3,7 @@ use super::*;
 use ash::vk;
 
 pub(super) struct Texture {
-}
-
-impl Drop for Texture {
-    fn drop(&mut self) 
-    {
-        
-    }
+    image: image::Image
 }
 
 impl renderer::Texture for Texture {
@@ -20,7 +14,7 @@ impl renderer::Texture for Texture {
 
     fn texture_data(&mut self, data: &[u8]) 
     {
-        
+        panic!("don't fucking dynamically allocate image")
     }
 }
 
@@ -64,10 +58,23 @@ impl Texture {
             vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED, 
             vk::MemoryPropertyFlags::DEVICE_LOCAL);
 
-        //create a command buffer
-        //use command buffer to transition image layout
-        
+        let temp = api.graphics_pool.create_temp_command_buffer(api.queues.graphics);
+        temp.transition_image_layout(
+            &image,
+            vk::Format::R8G8B8A8_SRGB,
+            vk::ImageLayout::UNDEFINED,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            info.layers as _,
+            0);
 
-        todo!()
+        let temp = api.graphics_pool.create_temp_command_buffer(api.queues.graphics);
+        temp.copy_buffer_to_image(
+            &staging_buffer, 
+            &image, 
+            info.width as u32, 
+            info.height as u32, 
+            info.layers as u32);
+
+        Texture{image}
     }
 }

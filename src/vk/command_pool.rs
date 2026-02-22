@@ -112,7 +112,7 @@ impl TempBuffer {
                     .base_mip_level(0)
                     .level_count(mip_levels)
                     .base_array_layer(0)
-                    .layer_count(layers))
+                    .layer_count(layers));
 
         let src_stage;
         let dst_stage;
@@ -160,7 +160,7 @@ impl TempBuffer {
 
         unsafe 
         {
-            self.deivce.device.cmd_pipeline_barrier(
+            self.device.device.cmd_pipeline_barrier(
                 self.handle,
                 src_stage,
                 dst_stage,
@@ -176,8 +176,8 @@ impl TempBuffer {
 
     pub(super) fn copy_buffer_to_image(
         &self, 
-        buffer: vk::Buffer, 
-        image: vk::Image, 
+        buffer: &buffer::Buffer, 
+        image: &image::Image, 
         width: u32, 
         height: u32, 
         layers: u32
@@ -198,14 +198,14 @@ impl TempBuffer {
                 vk::Extent3D::default()
                     .depth(1)
                     .width(width)
-                    .height(height))
+                    .height(height));
 
             unsafe 
             {
                 self.device.device.cmd_copy_buffer_to_image(
                     self.handle,
-                    buffer,
-                    image,
+                    buffer.handle,
+                    image.handle,
                     vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                     std::slice::from_ref(&region)
                 );
@@ -214,8 +214,8 @@ impl TempBuffer {
 
     pub(super) fn copy_buffer_to_buffer(
         &self, 
-        src: vk::Buffer, 
-        dst: vk::Buffer, 
+        src: buffer::Buffer, 
+        dst: buffer::Buffer, 
         size: vk::DeviceSize
     ) 
     {
@@ -226,8 +226,8 @@ impl TempBuffer {
         {
             self.device.device.cmd_copy_buffer(
                 self.handle, 
-                src, 
-                dst, 
+                src.handle, 
+                dst.handle, 
                 std::slice::from_ref(&copy_region));
         }
     }
