@@ -63,15 +63,17 @@ impl Api for GLinner
 }
 
 
-pub struct GLTexture{
+pub struct GLTexture {
     gl: Arc<glow::Context>,
     tex: glow::NativeTexture,
-    info: TextureCreateInfo
+    width: i32,
+    height: i32,
+    layers: i32,
 }
 
-impl GLTexture 
+impl GLTexture
 {
-    fn new(gl: Arc<glow::Context>, info: TextureCreateInfo) -> GLTexture 
+    fn new(gl: Arc<glow::Context>, info: TextureCreateInfo<'_>) -> GLTexture
     {
         unsafe 
         {
@@ -99,32 +101,32 @@ impl GLTexture
             gl.texture_parameter_i32(tex, glow::TEXTURE_MAG_FILTER, glow::LINEAR as i32);
             gl.texture_parameter_i32(tex, glow::TEXTURE_MIN_FILTER, glow::LINEAR as i32);
 
-            GLTexture{gl, tex, info}
+            GLTexture{gl, tex, width: info.width, height: info.height, layers: info.layers}
         }
     }
 }
 
 
-impl Texture for GLTexture 
+impl Texture for GLTexture
 {
     fn texture_data(&mut self, data: &[u8]) {
         unsafe
         {
-            if self.info.layers == 1 
+            if self.layers == 1 
             {
                 self.gl.texture_sub_image_2d(
                     self.tex, 
                     0, 
                     0, 
                     0, 
-                    self.info.width, 
-                    self.info.height as _, 
+                    self.width, 
+                    self.height as _, 
                     glow::RGBA, 
                     glow::UNSIGNED_BYTE, 
                     glow::PixelUnpackData::Slice(Some(data))
                 );
             }
-            else if self.info.layers > 1 
+            else if self.layers > 1 
             {
                 self.gl.texture_sub_image_3d(
                     self.tex, 
@@ -132,9 +134,9 @@ impl Texture for GLTexture
                     0, 
                     0, 
                     0, 
-                    self.info.width, 
-                    self.info.height, 
-                    self.info.layers, 
+                    self.width, 
+                    self.height, 
+                    self.layers, 
                     glow::RGBA, 
                     glow::UNSIGNED_BYTE, 
                     glow::PixelUnpackData::Slice(Some(data))
@@ -509,7 +511,7 @@ impl<'a> CommandBuffer<'a> for GLCommandBuffer<'a>
     }
 
 
-    fn submit(&self) 
+    fn submit(&mut self) 
     {
         //I don't really know what to put in this function
         unsafe 

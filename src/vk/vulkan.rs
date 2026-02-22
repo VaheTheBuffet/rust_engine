@@ -105,16 +105,16 @@ impl VKInner {
             .height(swapchain.extent.height);
 
         let color_image = Image::new(
-            &instance, 
-            device.clone(), 
+            &instance,
+            device.clone(),
+            physical_device,
             screen_extent, 
             1, 
             vk::SampleCountFlags::TYPE_1, 
             swapchain.format, 
             vk::ImageTiling::OPTIMAL, 
             vk::ImageUsageFlags::TRANSIENT_ATTACHMENT | vk::ImageUsageFlags::COLOR_ATTACHMENT, 
-            vk::MemoryPropertyFlags::DEVICE_LOCAL, 
-            physical_device);
+            vk::MemoryPropertyFlags::DEVICE_LOCAL);
 
         let color_image_view = image::ImageView::new(
             device.clone(), 
@@ -127,14 +127,14 @@ impl VKInner {
         let depth_image = Image::new(
             &instance, 
             device.clone(), 
+            physical_device,
             screen_extent, 
             1, 
             vk::SampleCountFlags::TYPE_1, 
             depth_format, 
             vk::ImageTiling::OPTIMAL, 
             vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
-            vk::MemoryPropertyFlags::DEVICE_LOCAL, 
-            physical_device);
+            vk::MemoryPropertyFlags::DEVICE_LOCAL);
 
         let depth_image_view = image::ImageView::new(
             device.clone(), 

@@ -50,7 +50,9 @@ impl Texture {
         }
 
         let image = image::Image::new(
-            api,
+            &api.instance,
+            api.device.clone(),
+            api.physical_device,
             vk::Extent3D::default()
                 .depth(1)
                 .width(info.width as u32)
@@ -61,10 +63,9 @@ impl Texture {
             vk::ImageTiling::OPTIMAL, 
             vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED, 
             vk::MemoryPropertyFlags::DEVICE_LOCAL);
-        
-        image.transition_layout(
 
-        );
+        //create a command buffer
+        //use command buffer to transition image layout
         
 
         todo!()

@@ -4,12 +4,15 @@ use super::*;
 
 //THIS IS JUST FOR DRAWING FOR NOW
 pub(super) struct CommandBuffer<'a> {
-    pub(super) handle: vk::CommandBuffer,
+    pub(super) handles: Vec<vk::CommandBuffer>,
     pub(super) descriptor_sets: Vec<vk::DescriptorSet>,
     pipeline: Option<&'a pipeline::Pipeline>,
     device: Arc<device::Device>,
     graphics_queue: vk::Queue,
     present_queue: vk::Queue,
+
+
+    cur_frame: usize,
 }
 
 impl<'a> CommandBuffer<'_> {
@@ -18,21 +21,22 @@ impl<'a> CommandBuffer<'_> {
         let alloc_info = vk::CommandBufferAllocateInfo::default()
             .command_pool(command_pool)
             .level(vk::CommandBufferLevel::PRIMARY)
-            .command_buffer_count(1);
+            .command_buffer_count(vulkan::VKInner::FRAMES_IN_FLIGHT);
 
-        let command_buffer = unsafe{api.device.device.allocate_command_buffers(&alloc_info)}
-            .expect("failed to allocate command buffer")[0];
+        let handles = unsafe{api.device.device.allocate_command_buffers(&alloc_info)}
+            .expect("failed to allocate command buffer");
 
         let graphics_queue = api.queues.graphics;
         let present_queue = api.queues.present;
 
         CommandBuffer {
-            handle: command_buffer, 
+            handles, 
             descriptor_sets: Vec::new(), 
             pipeline: None, 
             device: api.device.clone(),
             graphics_queue,
-            present_queue
+            present_queue,
+            cur_frame: 0
         }
     }
 }
@@ -65,7 +69,11 @@ impl<'a> renderer::CommandBuffer<'a> for CommandBuffer<'a> {
 
         unsafe 
         {
-            self.device.device.cmd_bind_vertex_buffers(self.handle, 0, &[buf.handle], &[0]);
+            self.device.device.cmd_bind_vertex_buffers(
+                self.handles[self.cur_frame], 
+                0, 
+                &[buf.handle], 
+                &[0]);
         }
     }
 
@@ -82,21 +90,24 @@ impl<'a> renderer::CommandBuffer<'a> for CommandBuffer<'a> {
         unsafe
         {
             self.device.device.cmd_draw_indexed(
-                self.handle, (end - start) as u32,
+                self.handles[self.cur_frame], (end - start) as u32,
                  1, 0, 0, 0);
         }
     }
 
-    fn submit(&self) 
+    fn submit(&mut self) 
     {
         unsafe 
         {
             let submit_info = vk::SubmitInfo::default()
-                .command_buffers(&[self.handle])
+                .command_buffers(&[self.handles[self.cur_frame]])
                 .signal_semaphores(todo!())
                 .wait_semaphores(todo!());
 
             self.device.device.queue_submit(self.graphics_queue, &[submit_info], None);
+
+            self.cur_frame += 1;
+            self.cur_frame &= vulkan::VKInner::FRAMES_IN_FLIGHT as usize;
         }
     }
 

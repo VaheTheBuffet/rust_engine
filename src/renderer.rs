@@ -29,7 +29,7 @@ pub trait Api {
     fn create_pipeline(&self, pipeline_info: PipelineInfo) -> Result<Box<dyn Pipeline>, ()>;
     fn create_command_buffer<'a>(&self) -> Result<Box<dyn CommandBuffer<'a> + 'a>, ()>;
     fn create_buffer(&self, buffer_info: BufferCreateInfo) -> Result<Box<dyn Buffer>, ()>;
-    fn create_texture(&mut self, texture_info: TextureCreateInfo) -> Result<Box<dyn Texture>, ()>;
+    fn create_texture(&mut self, texture_info: TextureCreateInfo) -> Result<Box<dyn Texture + '_>, ()>;
 }
 
 pub trait Pipeline {
@@ -42,7 +42,7 @@ pub trait CommandBuffer<'a> {
     fn bind_pipeline(&mut self, pipeline: &'a dyn Pipeline);
     fn bind_vertex_buffer(&self, buf: &dyn Buffer); 
     fn bind_descriptors(&self, descriptors: &[DescriptorWriteInfo]);
-    fn submit(&self);
+    fn submit(&mut self);
     fn begin(&self);
 }
 

@@ -68,7 +68,9 @@ impl Drop for Image {
 
 impl Image {
     pub(super) fn new(
-        api: &vulkan::VKInner,
+        instance: &vulkan::Instance,
+        device: Arc<device::Device>,
+        physical_device: vk::PhysicalDevice,
         extent: vk::Extent3D, 
         mip_levels: u32, 
         samples: vk::SampleCountFlags, 
@@ -92,28 +94,23 @@ impl Image {
             .sharing_mode(vk::SharingMode::EXCLUSIVE);
         
 
-        let image = unsafe{api.device.device.create_image(&image_create_info, None)}
+        let image = unsafe{device.device.create_image(&image_create_info, None)}
             .expect("failed to create image");
 
-        let mem_requirements = unsafe{api.device.device.get_image_memory_requirements(image)};
+        let mem_requirements = unsafe{device.device.get_image_memory_requirements(image)};
 
         let alloc_info = vk::MemoryAllocateInfo::default()
             .allocation_size(mem_requirements.size)
-            .memory_type_index(find_memory_type(&api.instance, api.physical_device, mem_requirements.memory_type_bits, properties)
+            .memory_type_index(find_memory_type(&instance, physical_device, mem_requirements.memory_type_bits, properties)
                 .expect("failed to find suitable memory type"));
 
-        let image_memory = unsafe{api.device.device.allocate_memory(&alloc_info, None)}
+        let image_memory = unsafe{device.device.allocate_memory(&alloc_info, None)}
             .expect("failed to allocate image memory");
 
-        unsafe{api.device.device.bind_image_memory(image, image_memory, 0)}
+        unsafe{device.device.bind_image_memory(image, image_memory, 0)}
             .expect("failed to bind image memory");
 
-        Image{device: api.device.clone(), handle: image, memory: image_memory}
-    }
-
-    fn transition_layout(&self, old: vk::ImageLayout, new: vk::ImageLayout) 
-    {
-
+        Image{device, handle: image, memory: image_memory}
     }
 }
 
