@@ -458,7 +458,7 @@ impl<'a> CommandBuffer<'a> for GLCommandBuffer<'a>
     }
 
     
-    fn bind_vertex_buffer(&self, buf: &dyn Buffer)
+    fn bind_vertex_buffer(&mut self, buf: &dyn Buffer)
     {
         let pipeline = self.pipeline.expect("bind pipeline before binding buffer");
 
@@ -521,7 +521,7 @@ impl<'a> CommandBuffer<'a> for GLCommandBuffer<'a>
     }
 
 
-    fn begin(&self) 
+    fn begin(&mut self) 
     {
         unsafe 
         {

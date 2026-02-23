@@ -70,7 +70,7 @@ pub struct VKInner {
     pub(super)physical_device: vk::PhysicalDevice,
     pub(super)device: Arc<device::Device>,
     //instance level
-    pub(super)debug_utils_messenger: debug::DebugUtilsMessenger,
+    pub(super)debug_utils_messenger: Option<debug::DebugUtilsMessenger>,
     pub(super)surface: surface::Surface,
     pub(super)instance: Arc<Instance>,
 
@@ -89,7 +89,11 @@ impl VKInner {
         };
 
         let instance = Arc::new(Instance::new(&entry, glfw));
-        let debug_utils_messenger = debug::DebugUtilsMessenger::new(&entry, &instance.instance);
+        #[cfg(debug_assertions)]
+        let debug_utils_messenger = Some(debug::DebugUtilsMessenger::new(&entry, &instance.instance));
+        #[cfg(not(debug_assertions))]
+        let debug_utils_messenger = None;
+
         let surface = surface::Surface::new(window, instance.clone());
         let physical_device = physical_device::create(&instance);
         let queue_family_indices = physical_device::get_queue_families(&instance, physical_device, surface.handle)
@@ -192,16 +196,29 @@ impl Api for VKInner {
 
     fn create_command_buffer<'a>(&self) -> Result<Box<dyn CommandBuffer<'a> + 'a>, ()>
     {
-        todo!()
+        Ok(Box::new(command_buffer::CommandBuffer::new(&self, self.graphics_pool.handle)))
     }
 
     fn create_buffer(&self, info: BufferCreateInfo) -> Result<Box<dyn Buffer>, ()> 
     {
-        todo!()
+        let (usage, properties, size) = match info {
+            BufferCreateInfo::ReadOnly(size) => {(
+                vk::BufferUsageFlags::VERTEX_BUFFER,
+                vk::MemoryPropertyFlags::DEVICE_LOCAL,
+                size
+            )}
+            BufferCreateInfo::Dynamic(size) => {(
+                vk::BufferUsageFlags::UNIFORM_BUFFER,
+                vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+                size
+            )}
+        };
+
+        Ok(Box::new(buffer::Buffer::new(&self, size as vk::DeviceSize, usage, properties)))
     }
 
     fn create_texture(&mut self, texture_info: TextureCreateInfo) -> Result<Box<dyn Texture>, ()> 
     {
-        todo!()
+        Ok(Box::new(texture::Texture::new(&self, texture_info)))
     }
 }

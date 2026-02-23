@@ -90,7 +90,7 @@ impl Texture {
     }
 }
 
-struct Sampler {
+pub(super) struct Sampler {
     pub(super) handle: vk::Sampler,
     device: Arc<device::Device>
 }

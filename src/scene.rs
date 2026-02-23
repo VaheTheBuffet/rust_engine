@@ -83,19 +83,21 @@ impl<'a> Scene<'a>
             .expect("failed to read spritesheet")
             .into_rgba8();
 
-        let mut texture = api.inner.create_texture(
+        let texture = api.inner.create_texture(
             renderer::TextureCreateInfo{
                 width: tex_array_data.width().try_into().unwrap(),
                 height: <u32 as TryInto<i32>>::try_into(tex_array_data.height()).unwrap() / NUM_TEXTURES,
-                layers: NUM_TEXTURES}
+                layers: NUM_TEXTURES,
+                pixels: tex_array_data.into_raw().as_slice()}
         ).expect("failed to create texture resource");
 
-        texture.texture_data(tex_array_data.into_raw().as_slice());
+        let descriptors = vec![
+            renderer::DescriptorWriteInfo::Uniform{handle: uniform_buffer.as_ref()},
+            renderer::DescriptorWriteInfo::Texture{handle: texture.as_ref()}
+        ];
 
         command_buffer.bind_pipeline(unsafe{&*((&*chunk_pipeline) as *const _)});
-        command_buffer.bind_buffer(uniform_buffer.as_ref(), 0);
-        command_buffer.bind_texture(texture.as_ref(), 1);
-
+        command_buffer.bind_descriptors(descriptors.as_slice());
         uniform_buffer.buffer_sub_data(PROJECTION.as_bytes(), offset_of!(Transform, proj) as i32);
 
         let world = world::World::new();
@@ -113,7 +115,7 @@ impl<'a> Scene<'a>
     }
 
 
-    pub fn draw(&self, player:&camera::Player) 
+    pub fn draw(&mut self, player:&camera::Player) 
     {
         self.command_buffer.submit();
         for pos in util::render_range((player.chunk_x, player.chunk_y, player.chunk_z)) 

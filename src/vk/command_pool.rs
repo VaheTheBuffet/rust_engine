@@ -239,9 +239,12 @@ impl TempBuffer {
 
         unsafe 
         {
-            self.device.device.end_command_buffer(self.handle); 
-            self.device.device.queue_submit(self.queue, std::slice::from_ref(&submit_info), vk::Fence::null());
-            self.device.device.queue_wait_idle(self.queue);
+            self.device.device.end_command_buffer(self.handle)
+                .expect("failed to end command buffer"); 
+            self.device.device.queue_submit(self.queue, std::slice::from_ref(&submit_info), vk::Fence::null())
+                .expect("failed to submit to queue");
+            self.device.device.queue_wait_idle(self.queue)
+                .expect("failed to wait for queue operation");
         }
     }
 }
