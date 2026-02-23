@@ -7,6 +7,7 @@ pub(super) struct Pipeline {
     pub(super) render_pass: RenderPass,
     pub(super) handle: vk::Pipeline,
     pub(super) descriptor_set_layout: vk::DescriptorSetLayout,
+    pub(super) layout: vk::PipelineLayout,
     pub(super) descriptor_pool: vk::DescriptorPool,
     device: Arc<device::Device>,
 }
@@ -23,8 +24,7 @@ impl Drop for Pipeline {
     }
 }
 
-impl Pipeline {
-    pub(super) fn new(
+impl Pipeline { pub(super) fn new(
         api: &vulkan::VKInner,
         color_image_view: vk::ImageView,
         depth_image_view: vk::ImageView,
@@ -246,6 +246,7 @@ impl Pipeline {
             render_pass, 
             framebuffer, 
             descriptor_pool, 
+            layout: pipeline_layout,
             descriptor_set_layout
         }
     }
@@ -270,7 +271,7 @@ fn create_shader_module(device: &device::Device, code: &[u8]) -> vk::ShaderModul
 
 
 pub struct RenderPass {
-    handle: vk::RenderPass,
+    pub(super) handle: vk::RenderPass,
     device: Arc<device::Device>,
 }
 
@@ -361,8 +362,8 @@ impl RenderPass {
 }
 
 pub(super) struct Framebuffer {
+    pub(super) handles: Vec<vk::Framebuffer>,
     device: Arc<device::Device>,
-    handles: Vec<vk::Framebuffer>
 }
 
 impl Drop for Framebuffer {

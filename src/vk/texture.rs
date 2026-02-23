@@ -3,7 +3,9 @@ use super::*;
 use ash::vk;
 
 pub(super) struct Texture {
-    image: image::Image
+    pub(super) image: image::Image,
+    pub(super) image_view: image::ImageView,
+    pub(super) sampler: Sampler,
 }
 
 impl renderer::Texture for Texture {
@@ -75,6 +77,59 @@ impl Texture {
             info.height as u32, 
             info.layers as u32);
 
-        Texture{image}
+        let image_view = image::ImageView::new(
+            api.device.clone(), 
+            image.handle, 
+            vk::Format::R8G8B8_SRGB, 
+            vk::ImageAspectFlags::COLOR, 
+            1);
+
+        let sampler = Sampler::new(api);
+
+        Texture{image, image_view, sampler}
+    }
+}
+
+struct Sampler {
+    pub(super) handle: vk::Sampler,
+    device: Arc<device::Device>
+}
+
+impl Drop for Sampler {
+    fn drop(&mut self)
+    {
+        unsafe 
+        {
+            self.device.device.destroy_sampler(self.handle, None);
+        }
+    }
+}
+
+impl Sampler {
+    fn new(api: &vulkan::VKInner) -> Sampler 
+    {
+        let properties = unsafe{api.instance.instance.get_physical_device_properties(api.physical_device)};
+
+        let sampler_info = vk::SamplerCreateInfo::default()
+            .mag_filter(vk::Filter::LINEAR)
+            .min_filter(vk::Filter::LINEAR)
+            .address_mode_u(vk::SamplerAddressMode::REPEAT)
+            .address_mode_v(vk::SamplerAddressMode::REPEAT)
+            .address_mode_w(vk::SamplerAddressMode::REPEAT)
+            .anisotropy_enable(true)
+            .max_anisotropy(1.0)
+            .border_color(vk::BorderColor::INT_OPAQUE_BLACK)
+            .max_anisotropy(properties.limits.max_sampler_anisotropy)
+            .unnormalized_coordinates(false)
+            .compare_op(vk::CompareOp::ALWAYS)
+            .mipmap_mode(vk::SamplerMipmapMode::LINEAR)
+            .min_lod(0.0)
+            .max_lod(vk::LOD_CLAMP_NONE)
+            .mip_lod_bias(0.0);
+
+        let sampler = unsafe{api.device.device.create_sampler(&sampler_info, None)}
+            .expect("failed to create sampler");
+
+        Sampler{handle: sampler, device: api.device.clone()}
     }
 }

@@ -5,6 +5,7 @@ pub(super) struct Buffer{
     pub(super) handle: vk::Buffer,
     pub(super) memory: vk::DeviceMemory,
     pub(super) memory_mapped: *const std::ffi::c_void,
+    pub(super) size: vk::DeviceSize,
     device: Arc<device::Device>,
 }
 
@@ -68,6 +69,7 @@ impl Buffer {
             handle: buffer, 
             memory: buffer_memory, 
             memory_mapped, 
+            size,
             device: api.device.clone()
         }
     }

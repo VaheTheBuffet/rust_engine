@@ -41,7 +41,7 @@ pub trait CommandBuffer<'a> {
     fn draw_indexed(&self, start:i32, end:i32);
     fn bind_pipeline(&mut self, pipeline: &'a dyn Pipeline);
     fn bind_vertex_buffer(&self, buf: &dyn Buffer); 
-    fn bind_descriptors(&self, descriptors: &[DescriptorWriteInfo]);
+    fn bind_descriptors(&mut self, descriptors: &[DescriptorWriteInfo]);
     fn submit(&mut self);
     fn begin(&self);
 }

@@ -475,7 +475,7 @@ impl<'a> CommandBuffer<'a> for GLCommandBuffer<'a>
         }
     }
 
-    fn bind_descriptors(&self, descriptors: &[DescriptorWriteInfo]) {
+    fn bind_descriptors(&mut self, descriptors: &[DescriptorWriteInfo]) {
 
         for (i, descriptor) in descriptors.iter().enumerate() {
             match descriptor {

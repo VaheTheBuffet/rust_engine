@@ -16,7 +16,7 @@ pub(super) struct CommandBuffer<'a> {
 }
 
 impl<'a> CommandBuffer<'_> {
-    fn new(api: &vulkan::VKInner, command_pool: vk::CommandPool) -> CommandBuffer<'a>
+    fn new(api: &vulkan::VKInner, command_pool: vk::CommandPool) -> CommandBuffer<'_>
     {
         let alloc_info = vk::CommandBufferAllocateInfo::default()
             .command_pool(command_pool)
@@ -36,12 +36,13 @@ impl<'a> CommandBuffer<'_> {
             device: api.device.clone(),
             graphics_queue,
             present_queue,
-            cur_frame: 0
+            cur_frame: 0,
         }
     }
 }
 
 impl<'a> renderer::CommandBuffer<'a> for CommandBuffer<'a> {
+    //this only needs to run once we can think of a better architecture
     fn bind_pipeline(&mut self, pipeline: &'a dyn renderer::Pipeline) 
     {
         let pipeline = pipeline.as_any().downcast_ref::<pipeline::Pipeline>()
@@ -50,18 +51,95 @@ impl<'a> renderer::CommandBuffer<'a> for CommandBuffer<'a> {
         self.pipeline = Some(pipeline);
     }
 
-    fn bind_descriptors(&self, descriptors: &[renderer::DescriptorWriteInfo]) 
+    // this only needs to run once we can think of a better architecture
+    fn bind_descriptors(&mut self, descriptors: &[renderer::DescriptorWriteInfo]) 
     {
         let pipeline = self.pipeline
             .expect("bind pipeline before binding descriptors");
 
-        let layouts = vec![pipeline.descriptor_set_layout; vulkan::VKInner::FRAMES_IN_FLIGHT as usize];
+        let layouts = [pipeline.descriptor_set_layout; vulkan::VKInner::FRAMES_IN_FLIGHT as usize];
 
         let alloc_info = vk::DescriptorSetAllocateInfo::default()
             .descriptor_pool(pipeline.descriptor_pool)
             .set_layouts(&layouts);
+
+        self.descriptor_sets = unsafe{self.device.device.allocate_descriptor_sets(&alloc_info)}
+            .expect("failed to allocate descriptor sets");
+
+        for i in 0..vulkan::VKInner::FRAMES_IN_FLIGHT 
+        {
+            let mut descriptor_write: Vec<vk::WriteDescriptorSet> = Vec::new();
+
+            let mut buffer_infos: Vec<vk::DescriptorBufferInfo> = Vec::new();
+            let mut image_infos: Vec<vk::DescriptorImageInfo> = Vec::new();
+
+            for descriptor in descriptors.iter()
+            {
+                match descriptor {
+                    renderer::DescriptorWriteInfo::Uniform {handle} => {
+                        let buffer = handle.as_any().downcast_ref::<buffer::Buffer>()
+                            .expect("must use buffer created with vulkan api in vulkan descriptor");
+
+                        buffer_infos.push(
+                            vk::DescriptorBufferInfo::default()
+                                .buffer(buffer.handle)
+                                .range(buffer.size));
+
+                    }
+
+                    renderer::DescriptorWriteInfo::Texture {handle} => {
+                        let texture = handle.as_any().downcast_ref::<texture::Texture>()
+                            .expect("must use texture created with vulkan api in vulkan descriptor");
+
+                        image_infos.push(
+                            vk::DescriptorImageInfo::default()
+                                .image_view(texture.image_view.handle)
+                                .sampler(texture.sampler.handle)
+                        );
+                    }
+                }
+            }
+
+            let (mut buffer_idx, mut image_idx) = (0, 0);
+            for (i, descriptor) in descriptors.iter().enumerate()
+            {
+                match descriptor {
+                    renderer::DescriptorWriteInfo::Uniform {handle: _} => {
+                        descriptor_write.push(
+                            vk::WriteDescriptorSet::default()
+                                .dst_binding(i as u32)
+                                .dst_array_element(0)
+                                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                                .buffer_info(std::slice::from_ref(&buffer_infos[buffer_idx]))
+                                .dst_set(self.descriptor_sets[i])
+                        );
+
+                        buffer_idx += 1;
+                    }
+
+                    renderer::DescriptorWriteInfo::Texture {handle: _} => {
+                        descriptor_write.push(
+                            vk::WriteDescriptorSet::default()
+                                .dst_binding(i as u32)
+                                .dst_array_element(0)
+                                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                                .buffer_info(std::slice::from_ref(&buffer_infos[image_idx]))
+                                .dst_set(self.descriptor_sets[i])
+                        );
+
+                        image_idx += 1;
+                    }
+                }
+            }
+
+            unsafe 
+            {
+                self.device.device.update_descriptor_sets(descriptor_write.as_slice(), &[]);
+            }
+        }
     }
 
+    // This can run once per draw call so it belongs in the command buffer
     fn bind_vertex_buffer(&self, buf: &dyn renderer::Buffer) 
     {
         let buf = buf.as_any().downcast_ref::<buffer::Buffer>()
@@ -79,15 +157,52 @@ impl<'a> renderer::CommandBuffer<'a> for CommandBuffer<'a> {
 
     fn draw(&self, start:i32, end:i32) 
     {
+        let pipeline = self.pipeline.expect("pipeline not bound before drawing");
+
+        let clear_values = [
+            vk::ClearValue{color: vk::ClearColorValue{float32: [0.0, 0.0, 0.0, 1.0]}},
+            vk::ClearValue{depth_stencil: vk::ClearDepthStencilValue::default().depth(1.0).stencil(0)}
+        ];
+
+        let render_pass_info = vk::RenderPassBeginInfo::default()
+            .render_pass(pipeline.render_pass.handle)
+            .framebuffer(pipeline.framebuffer.handles[self.cur_frame])
+            .render_area(
+                vk::Rect2D::default()
+                    .offset(vk::Offset2D::default().x(0).y(0))
+                    .extent(vk::Extent2D::default().width(1280).height(720)))
+            .clear_values(&clear_values);
+
         unsafe 
         {
-            self.device.device.cmd_draw(self.handle, (end-start) as u32, 1, 0, 0);
+            self.device.device.cmd_begin_render_pass(
+                self.handles[self.cur_frame], 
+                &render_pass_info, 
+                vk::SubpassContents::INLINE);
+
+            self.device.device.cmd_bind_pipeline(
+                self.handles[self.cur_frame], 
+                vk::PipelineBindPoint::GRAPHICS, 
+                pipeline.handle);
+
+            self.device.device.cmd_bind_descriptor_sets(
+                self.handles[self.cur_frame],
+                vk::PipelineBindPoint::GRAPHICS,
+                pipeline.layout,
+                0,
+                &self.descriptor_sets[self.cur_frame..self.cur_frame+1],
+                &[]
+            );
+
+            self.device.device.cmd_draw(self.handles[self.cur_frame], (end-start) as u32, 1, 0, 0);
+
+            self.device.device.cmd_end_render_pass(self.handles[self.cur_frame]);
         }
     }
 
     fn draw_indexed(&self, start:i32, end:i32) 
     {
-        unsafe
+        unsafe 
         {
             self.device.device.cmd_draw_indexed(
                 self.handles[self.cur_frame], (end - start) as u32,
@@ -104,7 +219,7 @@ impl<'a> renderer::CommandBuffer<'a> for CommandBuffer<'a> {
                 .signal_semaphores(todo!())
                 .wait_semaphores(todo!());
 
-            self.device.device.queue_submit(self.graphics_queue, &[submit_info], None);
+            self.device.device.queue_submit(self.graphics_queue, &[submit_info], todo!("fences"));
 
             self.cur_frame += 1;
             self.cur_frame &= vulkan::VKInner::FRAMES_IN_FLIGHT as usize;
@@ -113,6 +228,12 @@ impl<'a> renderer::CommandBuffer<'a> for CommandBuffer<'a> {
 
     fn begin(&self)
     {
-        
+        let begin_info = vk::CommandBufferBeginInfo::default()
+
+        unsafe 
+        {
+            self.device.device.begin_command_buffer(self.handles[self.cur_frame], &begin_info)
+                .expect("failed to begin command buffer");
+        }
     }
 }
