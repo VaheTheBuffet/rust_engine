@@ -214,8 +214,8 @@ impl TempBuffer {
 
     pub(super) fn copy_buffer_to_buffer(
         &self, 
-        src: buffer::Buffer, 
-        dst: buffer::Buffer, 
+        src: &buffer::Buffer, 
+        dst: &buffer::Buffer, 
         size: vk::DeviceSize
     ) 
     {
@@ -232,7 +232,7 @@ impl TempBuffer {
         }
     }
 
-    fn submit(&self)
+    pub(super) fn submit(&self)
     {
         let submit_info = vk::SubmitInfo::default()
             .command_buffers(std::slice::from_ref(&self.handle));

@@ -23,23 +23,20 @@ impl renderer::Texture for Texture {
 impl Texture {
     pub(super) fn new(api: &vulkan::VKInner, info: renderer::TextureCreateInfo<'_>) -> Texture 
     {
-        let image_size = (info.height * info.width * 4) as vk::DeviceSize;
-        let staging_buffer = buffer::Buffer::new(
+        let image_size = (info.height * info.width * info.layers * 4) as vk::DeviceSize;
+
+        let mut staging_buffer = buffer::Buffer::new(
             api, image_size,
             vk::BufferUsageFlags::TRANSFER_SRC, 
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT);
 
+        staging_buffer.map_memory();
 
         unsafe 
         {
-            let mem_ptr = api.device.device.map_memory(
-                staging_buffer.memory, 0, image_size, 
-                vk::MemoryMapFlags::empty()
-            ).expect("failed to map image memory");
-
             std::ptr::copy_nonoverlapping(
-                info.pixels.as_ptr(), 
-                mem_ptr as *mut u8, 
+                info.pixels.as_ptr() as *const std::ffi::c_void, 
+                staging_buffer.memory_mapped as *mut std::ffi::c_void, 
                 info.pixels.len());
 
             api.device.device.unmap_memory(staging_buffer.memory);
@@ -54,6 +51,7 @@ impl Texture {
                 .width(info.width as u32)
                 .height(info.height as u32), 
             1, 
+            info.layers as u32,
             vk::SampleCountFlags::TYPE_1, 
             vk::Format::R8G8B8A8_SRGB, 
             vk::ImageTiling::OPTIMAL, 
@@ -67,7 +65,7 @@ impl Texture {
             vk::ImageLayout::UNDEFINED,
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             info.layers as _,
-            0);
+            1);
 
         let temp = api.graphics_pool.create_temp_command_buffer(api.queues.graphics);
         temp.copy_buffer_to_image(
@@ -80,7 +78,7 @@ impl Texture {
         let image_view = image::ImageView::new(
             api.device.clone(), 
             image.handle, 
-            vk::Format::R8G8B8_SRGB, 
+            vk::Format::R8G8B8A8_SRGB, 
             vk::ImageAspectFlags::COLOR, 
             1);
 

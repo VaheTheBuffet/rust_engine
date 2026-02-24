@@ -73,6 +73,7 @@ impl Image {
         physical_device: vk::PhysicalDevice,
         extent: vk::Extent3D, 
         mip_levels: u32, 
+        array_layers: u32,
         samples: vk::SampleCountFlags, 
         format: vk::Format, 
         tiling: vk::ImageTiling,
@@ -88,7 +89,7 @@ impl Image {
             .mip_levels(mip_levels)
             .samples(samples)
             .tiling(tiling)
-            .array_layers(1)
+            .array_layers(array_layers)
             .initial_layout(vk::ImageLayout::UNDEFINED)
             .usage(usage)
             .sharing_mode(vk::SharingMode::EXCLUSIVE);

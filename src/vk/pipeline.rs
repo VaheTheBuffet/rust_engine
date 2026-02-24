@@ -236,8 +236,6 @@ impl Pipeline { pub(super) fn new(
         {
             api.device.device.destroy_shader_module(vert_module, None);
             api.device.device.destroy_shader_module(frag_module, None);
-            api.device.device.destroy_pipeline_layout(pipeline_layout, None);
-            api.device.device.destroy_descriptor_set_layout(descriptor_set_layout, None);
         }
 
         Pipeline {

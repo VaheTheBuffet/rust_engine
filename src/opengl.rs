@@ -151,11 +151,16 @@ impl Texture for GLTexture
     }
 }
 
+#[repr(u8)]
+enum GLBufferType {
+    Uniform,
+    Vertex
+}
 
 pub struct GLBuffer{
     gl: Arc<glow::Context>,
     buf: glow::NativeBuffer,
-    info: BufferCreateInfo,
+    ty: GLBufferType,
 }
 
 impl GLBuffer
@@ -166,7 +171,12 @@ impl GLBuffer
             gl.create_buffer().expect("failed to create buffer")
         };
 
-        GLBuffer{gl, buf, info}
+        let ty = match info {
+            BufferCreateInfo::ReadOnly(_) => {GLBufferType::Vertex},
+            BufferCreateInfo::Dynamic(_) => {GLBufferType::Uniform},
+        };
+
+        GLBuffer{gl, buf, ty}
     }
 }
 
@@ -188,14 +198,14 @@ impl Buffer for GLBuffer
     {
         unsafe 
         {
-            match self.info 
+            match self.ty 
             {
-                BufferCreateInfo::Dynamic(_) =>
+                GLBufferType::Uniform =>
                 {
                     self.gl.named_buffer_data_u8_slice(self.buf, data, glow::DYNAMIC_DRAW);
                 }
 
-                BufferCreateInfo::ReadOnly(_) =>
+                GLBufferType::Vertex =>
                 {
                     self.gl.named_buffer_data_u8_slice(self.buf, data, glow::STATIC_DRAW);
                 }
@@ -207,14 +217,14 @@ impl Buffer for GLBuffer
     {
         unsafe 
         {
-            match self.info 
+            match self.ty 
             {
-                BufferCreateInfo::Dynamic(_) =>
+                GLBufferType::Uniform =>
                 {
                     self.gl.named_buffer_data_size(self.buf, size, glow::DYNAMIC_DRAW);
                 }
 
-                BufferCreateInfo::ReadOnly(_) =>
+                GLBufferType::Vertex =>
                 {
                     self.gl.named_buffer_data_size(self.buf, size, glow::STATIC_DRAW);
                 }

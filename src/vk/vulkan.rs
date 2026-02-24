@@ -114,6 +114,7 @@ impl VKInner {
             physical_device,
             screen_extent, 
             1, 
+            1,
             vk::SampleCountFlags::TYPE_1, 
             swapchain.format, 
             vk::ImageTiling::OPTIMAL, 
@@ -134,6 +135,7 @@ impl VKInner {
             physical_device,
             screen_extent, 
             1, 
+            1,
             vk::SampleCountFlags::TYPE_1, 
             depth_format, 
             vk::ImageTiling::OPTIMAL, 
@@ -201,20 +203,22 @@ impl Api for VKInner {
 
     fn create_buffer(&self, info: BufferCreateInfo) -> Result<Box<dyn Buffer>, ()> 
     {
-        let (usage, properties, size) = match info {
-            BufferCreateInfo::ReadOnly(size) => {(
-                vk::BufferUsageFlags::VERTEX_BUFFER,
-                vk::MemoryPropertyFlags::DEVICE_LOCAL,
-                size
-            )}
-            BufferCreateInfo::Dynamic(size) => {(
-                vk::BufferUsageFlags::UNIFORM_BUFFER,
-                vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-                size
-            )}
-        };
+        let buffer = match info {
+            BufferCreateInfo::ReadOnly(data) => {
+                let cmd = self.transfer_pool.create_temp_command_buffer(self.queues.transfer);
+                buffer::Buffer::device_local(&self, data, cmd)
 
-        Ok(Box::new(buffer::Buffer::new(&self, size as vk::DeviceSize, usage, properties)))
+            }
+            BufferCreateInfo::Dynamic(size) => {
+                buffer::Buffer::new(
+                    &self,
+                    size as vk::DeviceSize,
+                    vk::BufferUsageFlags::UNIFORM_BUFFER,
+                    vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT
+                )
+            }
+        };
+        Ok(Box::new(buffer))
     }
 
     fn create_texture(&mut self, texture_info: TextureCreateInfo) -> Result<Box<dyn Texture>, ()> 

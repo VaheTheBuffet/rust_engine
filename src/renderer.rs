@@ -92,8 +92,8 @@ pub enum DescriptorWriteInfo<'a> {
     }
 }
 
-pub enum BufferCreateInfo{
-    ReadOnly(usize),
+pub enum BufferCreateInfo<'a>{
+    ReadOnly(&'a [u8]),
     Dynamic(usize),
 }
 

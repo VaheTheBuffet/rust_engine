@@ -77,7 +77,6 @@ impl<'a> Scene<'a>
         let uniform_buffer = api.inner.create_buffer(
             renderer::BufferCreateInfo::Dynamic(size_of::<Transform>())
         ).expect("failed to create uniform buffer");
-        uniform_buffer.allocate(size_of::<Transform>() as i32);
 
         let tex_array_data = image::open("./assets/spritesheet.png")
             .expect("failed to read spritesheet")
@@ -98,6 +97,7 @@ impl<'a> Scene<'a>
 
         command_buffer.bind_pipeline(unsafe{&*((&*chunk_pipeline) as *const _)});
         command_buffer.bind_descriptors(descriptors.as_slice());
+        //This is segfaulting in vulkan
         uniform_buffer.buffer_sub_data(PROJECTION.as_bytes(), offset_of!(Transform, proj) as i32);
 
         let world = world::World::new();
@@ -117,7 +117,7 @@ impl<'a> Scene<'a>
 
     pub fn draw(&mut self, player:&camera::Player) 
     {
-        self.command_buffer.submit();
+        self.command_buffer.begin();
         for pos in util::render_range((player.chunk_x, player.chunk_y, player.chunk_z)) 
         {
             if let Some((mesh, len)) = self.meshes.get(&pos) 
@@ -130,6 +130,7 @@ impl<'a> Scene<'a>
                 }
             }
         }
+        self.command_buffer.submit();
     }
 
 
@@ -138,11 +139,12 @@ impl<'a> Scene<'a>
         self.uniform_buffer.buffer_sub_data(player.get_view_mat().as_bytes(), offset_of!(Transform, view) as i32);
         for _ in 0..10
         {
-            if let Ok(mesh) = self.chunk_mesh_rx.try_recv()
+            if let Ok(mesh) = self.chunk_mesh_rx.try_recv() && mesh.vertices.len() > 0
             {
                 let len = mesh.vertices.len();
+                let bytes = unsafe{std::slice::from_raw_parts(mesh.vertices.as_ptr() as *const u8, len * 4)};
                 let buf = self.api.inner.create_buffer(
-                    renderer::BufferCreateInfo::ReadOnly(len * size_of_val(&mesh.vertices[0])))
+                    renderer::BufferCreateInfo::ReadOnly(bytes))
                     .expect("failed to create vertex buffer");
 
                 unsafe 

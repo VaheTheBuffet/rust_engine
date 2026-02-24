@@ -143,7 +143,7 @@ impl VoxelEngine
 
             self.player.update(player_events.as_slice(), delta_time as f32);
             scene.update(&self.player);
-            self.window.swap_buffers();
+            //self.window.swap_buffers();
             last_update_time = now;
         }
     }

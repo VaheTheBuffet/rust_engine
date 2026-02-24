@@ -132,6 +132,7 @@ impl<'a> renderer::CommandBuffer<'a> for CommandBuffer<'a> {
                         image_infos.push(
                             vk::DescriptorImageInfo::default()
                                 .image_view(texture.image_view.handle)
+                                .image_layout(vk::ImageLayout::READ_ONLY_OPTIMAL)
                                 .sampler(texture.sampler.handle)
                         );
                     }
@@ -148,7 +149,7 @@ impl<'a> renderer::CommandBuffer<'a> for CommandBuffer<'a> {
                                 .dst_binding(i as u32)
                                 .dst_array_element(0)
                                 .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                                .buffer_info(std::slice::from_ref(&buffer_infos[buffer_idx]))
+                                .buffer_info(&buffer_infos[buffer_idx..image_idx+1])
                                 .dst_set(self.descriptor_sets[i])
                         );
 
@@ -161,7 +162,7 @@ impl<'a> renderer::CommandBuffer<'a> for CommandBuffer<'a> {
                                 .dst_binding(i as u32)
                                 .dst_array_element(0)
                                 .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                                .buffer_info(std::slice::from_ref(&buffer_infos[image_idx]))
+                                .image_info(&image_infos[image_idx..image_idx+1])
                                 .dst_set(self.descriptor_sets[i])
                         );
 
@@ -262,7 +263,7 @@ impl<'a> renderer::CommandBuffer<'a> for CommandBuffer<'a> {
                 .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT]);
 
 
-            self.device.device.queue_submit(self.graphics_queue, &[submit_info], todo!("fences"))
+            self.device.device.queue_submit(self.graphics_queue, &[submit_info], self.frame_in_progress)
                 .expect("failed to submit to queue");
 
             self.cur_frame += 1;

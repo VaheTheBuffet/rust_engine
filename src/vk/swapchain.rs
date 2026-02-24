@@ -40,10 +40,14 @@ pub(super) fn create(
     let present_mode = support_details.choose_present_mode();
     let extent = support_details.choose_extent(window);
 
-    let image_count = std::cmp::min(
-        support_details.capabilities.max_image_count, 
-        support_details.capabilities.min_image_count + 1);
-    
+    let image_count = if support_details.capabilities.max_image_count > 0 {
+        std::cmp::min(
+            support_details.capabilities.max_image_count, 
+            support_details.capabilities.min_image_count + 1)
+    } else {
+        support_details.capabilities.min_image_count + 1
+    };
+
     let mut create_info = vk::SwapchainCreateInfoKHR::default()
         .surface(surface)
         .min_image_count(image_count)
