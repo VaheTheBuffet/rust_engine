@@ -52,4 +52,9 @@ void main()
     shading = get_shading(face_id);
     vertex_pos = (vec4(pos, 1.0) * ubo.m_model).xyz;
     gl_Position = vec4(pos, 1.0) * ubo.m_model * ubo.m_view * ubo.m_proj;
+
+//#ifdef VULKAN
+    gl_Position.y = - gl_Position.y;
+    gl_Position.z = (gl_Position.z + 1.0) / 2.0;
+//#endif
 }

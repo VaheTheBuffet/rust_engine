@@ -21,7 +21,8 @@ pub struct Scene<'a>
     meshes: HashMap<(i32,i32,i32), (Box<dyn renderer::Buffer>, i32)>,
     chunk_pipeline: Box<dyn renderer::Pipeline>,
     command_buffer: Box<dyn renderer::CommandBuffer<'a> +'a>,
-    uniform_buffer: Box<dyn renderer::Buffer>
+    uniform_buffer: Box<dyn renderer::Buffer>,
+    texture: Box<dyn renderer::Texture>
 }
 
 pub struct MeshBuilder 
@@ -97,7 +98,6 @@ impl<'a> Scene<'a>
 
         command_buffer.bind_pipeline(unsafe{&*((&*chunk_pipeline) as *const _)});
         command_buffer.bind_descriptors(descriptors.as_slice());
-        //This is segfaulting in vulkan
         uniform_buffer.buffer_sub_data(PROJECTION.as_bytes(), offset_of!(Transform, proj) as i32);
 
         let world = world::World::new();
@@ -110,7 +110,8 @@ impl<'a> Scene<'a>
             meshes: HashMap::new(),
             chunk_pipeline,
             command_buffer,
-            uniform_buffer
+            uniform_buffer,
+            texture
         }
     }
 
@@ -124,7 +125,7 @@ impl<'a> Scene<'a>
             {
                 if *len > 0 && player.is_in_frustum(util::chunk_center_from_global_index(pos)) 
                 {
-                    self.uniform_buffer.buffer_sub_data(math::get_model(pos).as_bytes(), offset_of!(Transform, model) as i32);
+                    self.uniform_buffer.buffer_sub_data(math::get_model(pos).as_bytes(), 0 as i32);
                     self.command_buffer.bind_vertex_buffer(mesh.as_ref());
                     self.command_buffer.draw(0, *len as i32);
                 }
@@ -147,10 +148,6 @@ impl<'a> Scene<'a>
                     renderer::BufferCreateInfo::ReadOnly(bytes))
                     .expect("failed to create vertex buffer");
 
-                unsafe 
-                {
-                    buf.buffer_data(std::slice::from_raw_parts(std::mem::transmute(mesh.vertices.as_ptr()), len * 4));
-                }
                 self.meshes.insert(mesh.pos, (buf, len as i32));
             }
         }

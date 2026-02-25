@@ -126,6 +126,7 @@ impl VKInner {
             color_image.handle, 
             swapchain.format, 
             vk::ImageAspectFlags::COLOR, 
+            1,
             1);
         
         let depth_format = image::find_depth_format(&instance, physical_device);
@@ -147,6 +148,7 @@ impl VKInner {
             depth_image.handle, 
             depth_format, 
             vk::ImageAspectFlags::DEPTH, 
+            1,
             1);
 
         VKInner { 
@@ -210,12 +212,15 @@ impl Api for VKInner {
 
             }
             BufferCreateInfo::Dynamic(size) => {
-                buffer::Buffer::new(
+                let mut buffer = buffer::Buffer::new(
                     &self,
                     size as vk::DeviceSize,
                     vk::BufferUsageFlags::UNIFORM_BUFFER,
                     vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT
-                )
+                );
+
+                buffer.map_memory();
+                buffer
             }
         };
         Ok(Box::new(buffer))

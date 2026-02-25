@@ -14,6 +14,10 @@ impl VoxelEngine
 {
     pub fn new() -> VoxelEngine
     {
+        //because renderdoc doesn't work on wayland
+        #[cfg(all(debug_assertions, not(target_os="windows"), not(target_os="macos")))]
+        glfw::init_hint(glfw::InitHint::Platform(glfw::Platform::X11));
+
         let mut glfw = glfw::init(fail_on_errors!()).unwrap();
 
         glfw.window_hint(glfw::WindowHint::ContextVersion(4, 5));

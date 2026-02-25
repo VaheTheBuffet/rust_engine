@@ -75,12 +75,21 @@ impl Texture {
             info.height as u32, 
             info.layers as u32);
 
+        temp.transition_image_layout(
+            &image,
+            vk::Format::R8G8B8A8_SRGB,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            info.layers as _,
+            1);
+
         let image_view = image::ImageView::new(
             api.device.clone(), 
             image.handle, 
             vk::Format::R8G8B8A8_SRGB, 
             vk::ImageAspectFlags::COLOR, 
-            1);
+            1,
+            info.layers as u32);
 
         let sampler = Sampler::new(api);
 

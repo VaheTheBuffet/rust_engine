@@ -24,11 +24,18 @@ impl ImageView {
         format: vk::Format, 
         aspect_flags: vk::ImageAspectFlags, 
         mip_levels: u32,
+        layers: u32,
     ) -> ImageView
     {
+        let view_type = if layers == 1 {
+            vk::ImageViewType::TYPE_2D
+        } else {
+            vk::ImageViewType::TYPE_2D_ARRAY
+        };
+
         let view_info = vk::ImageViewCreateInfo::default()
             .image(image)
-            .view_type(vk::ImageViewType::TYPE_2D)
+            .view_type(view_type)
             .format(format)
             .subresource_range(
                 vk::ImageSubresourceRange::default()
@@ -36,7 +43,7 @@ impl ImageView {
                     .base_mip_level(0)
                     .level_count(mip_levels)
                     .base_array_layer(0)
-                    .layer_count(1));
+                    .layer_count(layers));
 
         let handle = unsafe{
             device.device.create_image_view(&view_info, None)

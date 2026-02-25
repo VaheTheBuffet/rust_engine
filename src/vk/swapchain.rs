@@ -107,7 +107,7 @@ pub(super) fn create_swapchain_views(
     for i in 0..images.len() 
     {
         image_views.push(
-            image::ImageView::new(device.clone(), images[i], format, vk::ImageAspectFlags::COLOR, 1)
+            image::ImageView::new(device.clone(), images[i], format, vk::ImageAspectFlags::COLOR, 1, 1)
         );
     }
 

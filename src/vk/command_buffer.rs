@@ -12,12 +12,13 @@ pub(super) struct CommandBuffer<'a> {
     graphics_queue: vk::Queue,
     present_queue: vk::Queue,
 
-    image_available: vk::Semaphore,
-    render_finished: vk::Semaphore,
+    image_available: Vec<vk::Semaphore>,
+    cur_frame: usize,
+    
+    render_finished: Vec<vk::Semaphore>,
     frame_in_progress: vk::Fence,
 
-
-    cur_frame: usize,
+    image_idx: usize,
 
     swapchain: vk::SwapchainKHR,
 }
@@ -27,8 +28,11 @@ impl Drop for CommandBuffer<'_> {
     {
         unsafe 
         {
-            self.device.device.destroy_semaphore(self.image_available, None);
-            self.device.device.destroy_semaphore(self.render_finished, None);
+            for (ia, rf) in self.image_available.iter().zip(self.render_finished.iter())
+            {
+                self.device.device.destroy_semaphore(*ia, None);
+                self.device.device.destroy_semaphore(*rf, None);
+            }
             self.device.device.destroy_fence(self.frame_in_progress, None);
         }
     }
@@ -53,10 +57,17 @@ impl<'a> CommandBuffer<'_> {
         let fence_create_info = vk::FenceCreateInfo::default()
             .flags(vk::FenceCreateFlags::SIGNALED);
 
-        let image_available = unsafe{api.device.device.create_semaphore(&semaphore_create_info, None)}
-            .expect("failed to create semaphore");
-        let render_finished = unsafe{api.device.device.create_semaphore(&semaphore_create_info, None)}
-            .expect("failed to create semaphore");
+        let mut image_available: Vec<vk::Semaphore> = Vec::new();
+        let mut render_finished: Vec<vk::Semaphore> = Vec::new();
+        for _ in 0..api.swapchain.images.len() 
+        {
+            image_available.push(unsafe{api.device.device.create_semaphore(&semaphore_create_info, None)}
+                .expect("failed to create semaphore"));
+
+            render_finished.push(unsafe{api.device.device.create_semaphore(&semaphore_create_info, None)}
+                .expect("failed to create semaphore"));
+
+        }
         let frame_in_progress = unsafe{api.device.device.create_fence(&fence_create_info, None)}
             .expect("failed to create fence");
 
@@ -68,6 +79,7 @@ impl<'a> CommandBuffer<'_> {
             device: api.device.clone(),
             graphics_queue,
             present_queue,
+            image_idx: 0,
             cur_frame: 0,
 
             image_available,
@@ -104,7 +116,7 @@ impl<'a> renderer::CommandBuffer<'a> for CommandBuffer<'a> {
         self.descriptor_sets = unsafe{self.device.device.allocate_descriptor_sets(&alloc_info)}
             .expect("failed to allocate descriptor sets");
 
-        for _ in 0..vulkan::VKInner::FRAMES_IN_FLIGHT 
+        for set_n in 0..vulkan::VKInner::FRAMES_IN_FLIGHT as usize
         {
             let mut descriptor_write: Vec<vk::WriteDescriptorSet> = Vec::new();
 
@@ -132,7 +144,7 @@ impl<'a> renderer::CommandBuffer<'a> for CommandBuffer<'a> {
                         image_infos.push(
                             vk::DescriptorImageInfo::default()
                                 .image_view(texture.image_view.handle)
-                                .image_layout(vk::ImageLayout::READ_ONLY_OPTIMAL)
+                                .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                                 .sampler(texture.sampler.handle)
                         );
                     }
@@ -149,8 +161,8 @@ impl<'a> renderer::CommandBuffer<'a> for CommandBuffer<'a> {
                                 .dst_binding(i as u32)
                                 .dst_array_element(0)
                                 .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                                .buffer_info(&buffer_infos[buffer_idx..image_idx+1])
-                                .dst_set(self.descriptor_sets[i])
+                                .buffer_info(&buffer_infos[buffer_idx..buffer_idx+1])
+                                .dst_set(self.descriptor_sets[set_n])
                         );
 
                         buffer_idx += 1;
@@ -163,7 +175,7 @@ impl<'a> renderer::CommandBuffer<'a> for CommandBuffer<'a> {
                                 .dst_array_element(0)
                                 .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
                                 .image_info(&image_infos[image_idx..image_idx+1])
-                                .dst_set(self.descriptor_sets[i])
+                                .dst_set(self.descriptor_sets[set_n])
                         );
 
                         image_idx += 1;
@@ -196,16 +208,92 @@ impl<'a> renderer::CommandBuffer<'a> for CommandBuffer<'a> {
 
     fn draw(&self, start:i32, end:i32) 
     {
+
+        unsafe 
+        {
+            self.device.device.cmd_draw(self.handles[0], (end-start) as u32, 1, 0, 0);
+        }
+    }
+
+    fn draw_indexed(&self, start:i32, end:i32) 
+    {
+        unsafe 
+        {
+            self.device.device.cmd_draw_indexed(
+                self.handles[0], (end - start) as u32,
+                 1, 0, 0, 0);
+        }
+    }
+
+    fn submit(&mut self) 
+    {
+        unsafe 
+        {
+            self.device.device.cmd_end_render_pass(self.handles[0]);
+            self.device.device.end_command_buffer(self.handles[0])
+                .expect("failed to end command buffer");
+
+            let submit_info = vk::SubmitInfo::default()
+                .command_buffers(&self.handles[0..1])
+                .signal_semaphores(std::slice::from_ref(&self.render_finished[self.image_idx]))
+                .wait_semaphores(std::slice::from_ref(&self.image_available[0]))
+                .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT]);
+
+            self.device.device.queue_submit(self.graphics_queue, &[submit_info], self.frame_in_progress)
+                .expect("failed to submit to queue");
+
+            let image_idx = self.image_idx as u32;
+            let present_info = vk::PresentInfoKHR::default()
+                .swapchains(std::slice::from_ref(&self.swapchain))
+                .wait_semaphores(std::slice::from_ref(&self.render_finished[self.image_idx]))
+                .image_indices(std::slice::from_ref(&image_idx));
+
+            self.device.swapchain.queue_present(self.present_queue, &present_info)
+                .expect("failed to present swapchain image");
+
+            self.cur_frame = self.image_idx;
+        }
+    }
+
+    fn begin(&mut self)
+    {
+        let begin_info = vk::CommandBufferBeginInfo::default();
+        unsafe 
+        {
+            //This makes sure previous frame has been rendered but not necessarily presented
+            self.device.device.wait_for_fences(&[self.frame_in_progress], true, u64::MAX)
+                .expect("failed to wait for fences");
+            self.device.device.reset_fences(&[self.frame_in_progress])
+                .expect("failed to reset fences");
+
+            //This will mark the next available image and signal the sempahore once it becomes
+            //usable
+            let (img_idx, _) = self.device.swapchain.acquire_next_image(
+                self.swapchain, 
+                u64::MAX, 
+                self.image_available[0], 
+                vk::Fence::null()
+            ).expect("failed to get swapchain image");
+            self.image_idx = img_idx as usize;
+
+            self.device.device.reset_command_buffer(self.handles[0], vk::CommandBufferResetFlags::empty())
+                .expect("failed to reset command buffer");
+            self.device.device.begin_command_buffer(self.handles[0], &begin_info)
+                .expect("failed to begin command buffer");
+        }
+
+
+        //Per batch-draw command buffer commands
         let pipeline = self.pipeline.expect("pipeline not bound before drawing");
 
         let clear_values = [
-            vk::ClearValue{color: vk::ClearColorValue{float32: [0.0, 0.0, 0.0, 1.0]}},
+            vk::ClearValue{color: vk::ClearColorValue{float32: [0.0, 0.0, 0.5, 1.0]}},
             vk::ClearValue{depth_stencil: vk::ClearDepthStencilValue::default().depth(1.0).stencil(0)}
         ];
 
         let render_pass_info = vk::RenderPassBeginInfo::default()
             .render_pass(pipeline.render_pass.handle)
-            .framebuffer(pipeline.framebuffer.handles[self.cur_frame])
+            .framebuffer(pipeline.framebuffer.handles[self.image_idx])
             .render_area(
                 vk::Rect2D::default()
                     .offset(vk::Offset2D::default().x(0).y(0))
@@ -232,71 +320,6 @@ impl<'a> renderer::CommandBuffer<'a> for CommandBuffer<'a> {
                 &self.descriptor_sets[0..1],
                 &[]
             );
-
-            self.device.device.cmd_draw(self.handles[0], (end-start) as u32, 1, 0, 0);
-
-            self.device.device.cmd_end_render_pass(self.handles[0]);
-        }
-    }
-
-    fn draw_indexed(&self, start:i32, end:i32) 
-    {
-        unsafe 
-        {
-            self.device.device.cmd_draw_indexed(
-                self.handles[0], (end - start) as u32,
-                 1, 0, 0, 0);
-        }
-    }
-
-    fn submit(&mut self) 
-    {
-        unsafe 
-        {
-            self.device.device.end_command_buffer(self.handles[0])
-                .expect("failed to end command buffer");
-
-            let submit_info = vk::SubmitInfo::default()
-                .command_buffers(&self.handles[0..1])
-                .signal_semaphores(std::slice::from_ref(&self.render_finished))
-                .wait_semaphores(std::slice::from_ref(&self.image_available))
-                .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT]);
-
-
-            self.device.device.queue_submit(self.graphics_queue, &[submit_info], self.frame_in_progress)
-                .expect("failed to submit to queue");
-
-            self.cur_frame += 1;
-            self.cur_frame &= vulkan::VKInner::FRAMES_IN_FLIGHT as usize;
-        }
-    }
-
-    fn begin(&mut self)
-    {
-        unsafe 
-        {
-            self.device.device.wait_for_fences(&[self.frame_in_progress], true, u64::MAX)
-                .expect("failed to wait for fences");
-            let (img_idx, _) = self.device.swapchain.acquire_next_image(
-                self.swapchain, 
-                u64::MAX, 
-                self.image_available, 
-                vk::Fence::null()
-            ).expect("failed to get swapchain image");
-
-            self.cur_frame = img_idx as usize;
-            self.device.device.reset_fences(&[self.frame_in_progress])
-                .expect("failed to reset fences");
-            self.device.device.reset_command_buffer(self.handles[0], vk::CommandBufferResetFlags::empty())
-                .expect("failed to reset command buffer");
-        }
-
-        let begin_info = vk::CommandBufferBeginInfo::default();
-
-        unsafe 
-        {
-            self.device.device.begin_command_buffer(self.handles[0], &begin_info)
-                .expect("failed to begin command buffer");
         }
     }
 }

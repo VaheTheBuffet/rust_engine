@@ -96,10 +96,10 @@ impl Buffer {
         let final_buffer = Buffer::new(
             api, 
             data.len() as vk::DeviceSize, 
-            vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::UNIFORM_BUFFER, 
+            vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::VERTEX_BUFFER, 
             vk::MemoryPropertyFlags::DEVICE_LOCAL);
 
-        cmd.copy_buffer_to_buffer(&staging_buffer, &final_buffer, 0);
+        cmd.copy_buffer_to_buffer(&staging_buffer, &final_buffer, data.len() as vk::DeviceSize);
         cmd.submit();
 
         final_buffer
@@ -122,7 +122,7 @@ impl crate::renderer::Buffer for Buffer
     fn buffer_sub_data(&self, data: &[u8], offset:i32) {
         unsafe {
             std::ptr::copy_nonoverlapping(
-                data.as_ptr(), 
+                data.as_ptr().add(offset as _), 
                 (self.memory_mapped as *mut u8).add(offset as _), 
                 data.len()
             );

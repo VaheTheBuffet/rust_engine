@@ -92,6 +92,19 @@ pub enum DescriptorWriteInfo<'a> {
     }
 }
 
+impl std::fmt::Debug for DescriptorWriteInfo<'_> {
+     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+         let name = match self {
+             &DescriptorWriteInfo::Uniform {handle: _} => {"Uniform"},
+             &DescriptorWriteInfo::Texture {handle: _} => {"Texture"}
+         };
+
+         f.debug_tuple("")
+          .field(&name)
+          .finish()
+     }
+}
+
 pub enum BufferCreateInfo<'a>{
     ReadOnly(&'a [u8]),
     Dynamic(usize),
