@@ -20,6 +20,7 @@ impl Drop for Pipeline {
             self.device.device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
             self.device.device.destroy_descriptor_pool(self.descriptor_pool, None);
             self.device.device.destroy_pipeline(self.handle, None);
+            self.device.device.destroy_pipeline_layout(self.layout, None);
         }     
     }
 }
@@ -119,13 +120,10 @@ impl Pipeline { pub(super) fn new(
             .color_write_mask(
                 vk::ColorComponentFlags::A | vk::ColorComponentFlags::R 
                 | vk::ColorComponentFlags::G | vk::ColorComponentFlags::B)
-            .blend_enable(true)
-            .src_alpha_blend_factor(vk::BlendFactor::SRC_ALPHA)
-            .dst_alpha_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
+            .blend_enable(false)
             .color_blend_op(vk::BlendOp::ADD)
-            .src_alpha_blend_factor(vk::BlendFactor::ONE)
-            .dst_alpha_blend_factor(vk::BlendFactor::ZERO)
-            .alpha_blend_op(vk::BlendOp::ADD);
+            .src_color_blend_factor(vk::BlendFactor::ONE)
+            .dst_color_blend_factor(vk::BlendFactor::ZERO);
 
         let color_blend_attachment = vk::PipelineColorBlendStateCreateInfo::default()
             .logic_op_enable(false)
@@ -204,7 +202,15 @@ impl Pipeline { pub(super) fn new(
         let pipeline_layout = unsafe{api.device.device.create_pipeline_layout(&pipeline_layout_create_info, None)}
             .expect("failed to create pipeline layout");
 
-        let render_pass = RenderPass::new(api.device.clone(), swapchain.format, api.depth_format);
+        let render_pass_info = RenderPassCreateInfo {
+            color_attachment: Some(swapchain.format),
+            depth_attachment: Some(api.depth_format),
+            resolve_attachment: None,
+            load: false,
+            store: true
+        };
+
+        let render_pass = RenderPass::new(api.device.clone(), &render_pass_info);
 
         let framebuffer = Framebuffer::new(api.device.clone(), swapchain, color_image_view, depth_image_view, &render_pass);
 
@@ -217,7 +223,6 @@ impl Pipeline { pub(super) fn new(
             .multisample_state(&multisample_state)
             .depth_stencil_state(&depth_stencil)
             .color_blend_state(&color_blend_attachment)
-            //.dynamic_state(dynamic_state) //WE SHOULD CONSIDER USING DYNAMIC STATE FOR VIEWPORT AND SCISSOR
             .layout(pipeline_layout)
             .render_pass(render_pass.handle)
             .subpass(0)
@@ -267,6 +272,13 @@ fn create_shader_module(device: &device::Device, code: &[u8]) -> vk::ShaderModul
         .expect("failed to create shader module")
 }
 
+pub(super) struct RenderPassCreateInfo {
+    pub(super) color_attachment: Option<vk::Format>,
+    pub(super) depth_attachment: Option<vk::Format>,
+    pub(super) resolve_attachment: Option<vk::Format>,
+    pub(super) load: bool,
+    pub(super) store: bool,
+}
 
 pub struct RenderPass {
     pub(super) handle: vk::RenderPass,
@@ -286,58 +298,109 @@ impl Drop for RenderPass {
 impl RenderPass {
     pub(super) fn new(
         device: Arc<device::Device>, 
-        swapchain_image_format: vk::Format, 
-        depth_format: vk::Format
+        info: &RenderPassCreateInfo
     ) -> RenderPass
     {
-        let color_attachment = vk::AttachmentDescription::default()
-            .format(swapchain_image_format)
-            .initial_layout(vk::ImageLayout::UNDEFINED)
-            .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-            .load_op(vk::AttachmentLoadOp::CLEAR)
-            .store_op(vk::AttachmentStoreOp::STORE)
-            .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
-            .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
-            .samples(vk::SampleCountFlags::TYPE_1);
 
-//        let color_attachment_resolve = vk::AttachmentDescription::default()
-//            .format(swapchain_image_format)
-//            .initial_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-//            .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-//            .load_op(vk::AttachmentLoadOp::DONT_CARE)
-//            .store_op(vk::AttachmentStoreOp::STORE)
-//            .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
-//            .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
-//            .samples(vk::SampleCountFlags::TYPE_1);
+        let mut attachments: Vec<vk::AttachmentDescription> = Vec::new();
+        let mut counter: u32 = 0;
+        let mut color_idx = None;
+        let mut depth_idx = None;
+        let mut resolve_idx = None;
 
-        let depth_attachment = vk::AttachmentDescription::default()
-            .format(depth_format)
-            .initial_layout(vk::ImageLayout::UNDEFINED)
-            .final_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-            .load_op(vk::AttachmentLoadOp::CLEAR)
-            .store_op(vk::AttachmentStoreOp::DONT_CARE)
-            .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
-            .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
-            .samples(vk::SampleCountFlags::TYPE_1);
+        if let Some(format) = info.color_attachment 
+        {
+            let (initial_layout, load_op) = if info.load {
+                (vk::ImageLayout::PRESENT_SRC_KHR, vk::AttachmentLoadOp::LOAD)
+            } else {
+                (vk::ImageLayout::UNDEFINED, vk::AttachmentLoadOp::CLEAR)
+            };
 
-        let color_attachment_ref = vk::AttachmentReference::default()
-            .attachment(0)
-            .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
+            attachments.push(
+                vk::AttachmentDescription::default()
+                    .format(format)
+                    .initial_layout(initial_layout)
+                    .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+                    .load_op(load_op)
+                    .store_op(vk::AttachmentStoreOp::STORE)
+                    .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
+                    .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
+                    .samples(vk::SampleCountFlags::TYPE_1));
 
-        let depth_attachment_ref = vk::AttachmentReference::default()
-            .attachment(1)
-            .layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+            color_idx = Some(counter);
+            counter += 1;
+        }
 
-//        let color_attachment_resolve_ref = vk::AttachmentReference::default()
-//            .attachment(2)
-//            .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
+        if let Some(format) = info.depth_attachment
+        {
+            let (initial_layout, load_op) = if info.load {
+                (vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL, vk::AttachmentLoadOp::LOAD)
+            } else {
+                (vk::ImageLayout::UNDEFINED, vk::AttachmentLoadOp::CLEAR)
+            };
 
-        let subpass = vk::SubpassDescription::default()
-            .color_attachments(std::slice::from_ref(&color_attachment_ref))
-            .depth_stencil_attachment(&depth_attachment_ref)
-            /* .resolve_attachments(std::slice::from_ref(&color_attachment_resolve_ref))*/;
+            attachments.push(
+                vk::AttachmentDescription::default()
+                    .format(format)
+                    .initial_layout(initial_layout)
+                    .final_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+                    .load_op(load_op)
+                    .store_op(vk::AttachmentStoreOp::STORE)
+                    .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
+                    .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
+                    .samples(vk::SampleCountFlags::TYPE_1));
 
-        let attachments = [color_attachment, depth_attachment, /*color_attachment_resolve*/];
+            depth_idx = Some(counter);
+            counter+= 1;
+        }
+
+        if let Some(format) = info.resolve_attachment
+        {
+            attachments.push(
+                vk::AttachmentDescription::default()
+                    .format(format)
+                    .initial_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                    .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+                    .load_op(vk::AttachmentLoadOp::DONT_CARE)
+                    .store_op(vk::AttachmentStoreOp::STORE)
+                    .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
+                    .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
+                    .samples(vk::SampleCountFlags::TYPE_1));
+
+            resolve_idx = Some(counter);
+        }
+
+        let color_attachment_ref = color_idx.map(|idx|
+            vk::AttachmentReference::default()
+                .attachment(idx)
+                .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL));
+
+        let depth_attachment_ref = depth_idx.map(|idx|
+            vk::AttachmentReference::default()
+                .attachment(idx)
+                .layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL));
+
+        let color_attachment_resolve_ref = resolve_idx.map(|idx|
+            vk::AttachmentReference::default()
+                .attachment(idx)
+                .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL));
+
+        let mut subpass = vk::SubpassDescription::default();
+
+        if color_idx.is_some() 
+        {
+            subpass = subpass.color_attachments(std::slice::from_ref(&color_attachment_ref.as_ref().unwrap()));
+        }
+
+        if depth_idx.is_some() 
+        {
+            subpass = subpass.depth_stencil_attachment(&depth_attachment_ref.as_ref().unwrap())
+        }
+
+        if resolve_idx.is_some() 
+        {
+            subpass = subpass.resolve_attachments(std::slice::from_ref(&color_attachment_resolve_ref.as_ref().unwrap()));
+        }
 
         let dependency = vk::SubpassDependency::default()
             .src_subpass(vk::SUBPASS_EXTERNAL)

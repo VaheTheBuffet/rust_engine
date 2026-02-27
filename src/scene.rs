@@ -14,15 +14,18 @@ pub struct Transform
 
 pub struct Scene<'a>
 {
-    api: renderer::ApiHandle,
     world: world::World,
     chunk_mesh_rx: mpsc::Receiver<chunk::ChunkMesh>,
     chunk_tx: mpsc::Sender<world::ChunkCluster>,
-    meshes: HashMap<(i32,i32,i32), (Box<dyn renderer::Buffer>, i32)>,
-    chunk_pipeline: Box<dyn renderer::Pipeline>,
+
     command_buffer: Box<dyn renderer::CommandBuffer<'a> +'a>,
+
+    meshes: HashMap<(i32,i32,i32), (Box<dyn renderer::Buffer>, i32)>,
     uniform_buffer: Box<dyn renderer::Buffer>,
-    texture: Box<dyn renderer::Texture>
+    texture: Box<dyn renderer::Texture>,
+
+    chunk_pipeline: Box<dyn renderer::Pipeline>,
+    api: renderer::ApiHandle,
 }
 
 pub struct MeshBuilder 
@@ -123,7 +126,7 @@ impl<'a> Scene<'a>
         {
             if let Some((mesh, len)) = self.meshes.get(&pos) 
             {
-                if *len > 0 && player.is_in_frustum(util::chunk_center_from_global_index(pos)) 
+                if *len > 0 //&& player.is_in_frustum(util::chunk_center_from_global_index(pos)) 
                 {
                     self.uniform_buffer.buffer_sub_data(math::get_model(pos).as_bytes(), 0 as i32);
                     self.command_buffer.bind_vertex_buffer(mesh.as_ref());

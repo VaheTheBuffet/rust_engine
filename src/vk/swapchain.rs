@@ -143,7 +143,7 @@ impl SwapchainSupportDetails
         for &format in &self.formats 
         {
             if format.format == vk::Format::B8G8R8A8_SRGB 
-                && format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR 
+                && format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
             {
                 return format
             }

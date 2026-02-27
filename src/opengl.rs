@@ -503,7 +503,7 @@ impl<'a> CommandBuffer<'a> for GLCommandBuffer<'a>
         }
     }
 
-    fn draw(&self, start:i32, end:i32) 
+    fn draw(&mut self, start:i32, end:i32) 
     {
         unsafe 
         {
@@ -512,24 +512,13 @@ impl<'a> CommandBuffer<'a> for GLCommandBuffer<'a>
     }
 
 
-    fn draw_indexed(&self, start:i32, end:i32) 
+    fn draw_indexed(&mut self, start:i32, end:i32) 
     {
         unsafe 
         {
             self.gl.draw_elements(glow::TRIANGLES, end - start + 1, glow::UNSIGNED_INT, 0);
         }
     }
-
-
-    fn submit(&mut self) 
-    {
-        //I don't really know what to put in this function
-        unsafe 
-        {
-            self.gl.flush();
-        }
-    }
-
 
     fn begin(&mut self) 
     {
@@ -538,6 +527,13 @@ impl<'a> CommandBuffer<'a> for GLCommandBuffer<'a>
             self.gl.clear_color(0.6, 0.8, 0.99, 1.0);
             self.gl.clear(glow::COLOR_BUFFER_BIT | glow::DEPTH_BUFFER_BIT);
         }
+    }
+
+    fn submit(&mut self) 
+    {
+        // I dont't know what this should do in opengl
+        // This would just swap buffers but the window does it for us 
+        // in opengl, unlike vulkan
     }
 }
 

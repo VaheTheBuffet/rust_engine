@@ -122,7 +122,7 @@ impl crate::renderer::Buffer for Buffer
     fn buffer_sub_data(&self, data: &[u8], offset:i32) {
         unsafe {
             std::ptr::copy_nonoverlapping(
-                data.as_ptr().add(offset as _), 
+                data.as_ptr(), 
                 (self.memory_mapped as *mut u8).add(offset as _), 
                 data.len()
             );
