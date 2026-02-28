@@ -101,14 +101,13 @@ impl GLTexture
             gl.texture_parameter_i32(tex, glow::TEXTURE_MAG_FILTER, glow::LINEAR as i32);
             gl.texture_parameter_i32(tex, glow::TEXTURE_MIN_FILTER, glow::LINEAR as i32);
 
-            GLTexture{gl, tex, width: info.width, height: info.height, layers: info.layers}
+            let mut tex = GLTexture{gl, tex, width: info.width, height: info.height, layers: info.layers};
+            tex.texture_data(info.pixels);
+
+            tex
         }
     }
-}
 
-
-impl Texture for GLTexture
-{
     fn texture_data(&mut self, data: &[u8]) {
         unsafe
         {
@@ -144,6 +143,11 @@ impl Texture for GLTexture
             }
         }
     }
+}
+
+
+impl Texture for GLTexture
+{
 
     fn as_any(&self) -> &dyn Any 
     {
@@ -171,29 +175,25 @@ impl GLBuffer
             gl.create_buffer().expect("failed to create buffer")
         };
 
-        let ty = match info {
-            BufferCreateInfo::ReadOnly(_) => {GLBufferType::Vertex},
-            BufferCreateInfo::Dynamic(_) => {GLBufferType::Uniform},
-        };
+        match info {
+            BufferCreateInfo::ReadOnly(data) => 
+            {
+                let mut buffer = GLBuffer{gl, buf, ty: GLBufferType::Vertex};
+                buffer.data(data);
 
-        GLBuffer{gl, buf, ty}
-    }
-}
+                buffer
+            }
 
-impl Drop for GLBuffer
-{
-    fn drop(&mut self) 
-    {
-        unsafe 
-        {
-            self.gl.delete_buffer(self.buf);
+            BufferCreateInfo::Dynamic(size) => 
+            {
+                let buffer = GLBuffer{gl, buf, ty: GLBufferType::Uniform};
+                buffer.allocate(size as i32);
+
+                buffer
+            }
         }
     }
-}
 
-
-impl Buffer for GLBuffer 
-{
     fn data(&mut self, data: &[u8]) 
     {
         unsafe 
@@ -231,7 +231,22 @@ impl Buffer for GLBuffer
             }
         }
     }
+}
 
+impl Drop for GLBuffer
+{
+    fn drop(&mut self) 
+    {
+        unsafe 
+        {
+            self.gl.delete_buffer(self.buf);
+        }
+    }
+}
+
+
+impl Buffer for GLBuffer 
+{
     fn sub_data(&self, data: &[u8], offset: i32) 
     {
         unsafe 

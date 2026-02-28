@@ -53,8 +53,8 @@ void main()
     vertex_pos = (vec4(pos, 1.0) * ubo.m_model).xyz;
     gl_Position = vec4(pos, 1.0) * ubo.m_model * ubo.m_view * ubo.m_proj;
 
-//#ifdef VULKAN
+#ifdef VULKAN
     gl_Position.y = - gl_Position.y;
-    //gl_Position.z = (gl_Position.z + gl_Position.w) / 2.0;
-//#endif
+    gl_Position.z = (gl_Position.z + gl_Position.w) / 2.0;
+#endif
 }

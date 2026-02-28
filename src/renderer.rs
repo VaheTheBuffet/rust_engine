@@ -52,14 +52,11 @@ pub trait CommandBuffer<'a> {
 }
 
 pub trait Buffer {
-    fn data(&mut self, data: &[u8]);
-    fn allocate(&self, size: i32);
     fn sub_data(&self, data: &[u8], offset:i32);
     fn as_any(&self) -> &dyn Any;
 }
 
 pub trait Texture {
-    fn texture_data(&mut self, data: &[u8]);
     fn as_any(&self) -> &dyn Any;
 }
 

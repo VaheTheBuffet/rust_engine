@@ -25,7 +25,10 @@ impl VoxelEngine
         glfw.window_hint(glfw::WindowHint::OpenGlForwardCompat(true));
         glfw.window_hint(glfw::WindowHint::OpenGlDebugContext(false));
         glfw.window_hint(glfw::WindowHint::FocusOnShow(true));
-        glfw.window_hint(glfw::WindowHint::ClientApi(glfw::ClientApiHint::NoApi));
+
+        //This is 1 of 2 points of contention between the API
+        //TODO: Come up with a way to abstract window and context creation
+        //glfw.window_hint(glfw::WindowHint::ClientApi(glfw::ClientApiHint::NoApi));
 
         let (mut window, events) = glfw.create_window(
             WIDTH, HEIGHT, "Voxel Engine", glfw::WindowMode::Windowed
@@ -34,7 +37,7 @@ impl VoxelEngine
         window.set_cursor_mode(glfw::CursorMode::Disabled);
         window.set_raw_mouse_motion(true);
 
-        //window.make_current();
+        window.make_current();
         window.show();
         window.set_key_polling(true);
 
@@ -110,7 +113,7 @@ impl VoxelEngine
         let (chunk_tx, chunk_rx) = std::sync::mpsc::channel::<world::ChunkCluster>();
         let (mesh_tx, mesh_rx) = std::sync::mpsc::channel::<chunk::ChunkMesh>();
 
-        let api = renderer::ApiCreateInfo::VK.request_api(&mut self.window, &self.glfw);
+        let api = renderer::ApiCreateInfo::GL.request_api(&mut self.window, &self.glfw);
 
         let mut scene = Scene::new(api, mesh_rx, chunk_tx);
         let mesh_builder = scene::MeshBuilder::new(chunk_rx, mesh_tx);
@@ -147,7 +150,7 @@ impl VoxelEngine
 
             self.player.update(player_events.as_slice(), delta_time as f32);
             scene.update(&self.player);
-            //self.window.swap_buffers();
+            self.window.swap_buffers();
             last_update_time = now;
         }
     }

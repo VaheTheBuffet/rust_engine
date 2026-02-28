@@ -13,11 +13,6 @@ impl renderer::Texture for Texture {
     {
         self
     }
-
-    fn texture_data(&mut self, data: &[u8]) 
-    {
-        panic!("don't fucking dynamically allocate image")
-    }
 }
 
 impl Texture {

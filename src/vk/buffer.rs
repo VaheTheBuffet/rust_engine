@@ -112,20 +112,6 @@ impl Buffer {
 
 impl crate::renderer::Buffer for Buffer
 {
-    fn allocate(&self, size: i32) {
-        println!("buffer already allocated at creation time");
-    }
-
-    fn data(&mut self, data: &[u8]) {
-        if self.memory_mapped.is_null() {
-            panic!("not a dynamic buffer!");
-        }
-
-        unsafe {
-            std::ptr::copy_nonoverlapping(data.as_ptr(), self.memory_mapped as _, data.len());
-        }
-    }
-
     fn sub_data(&self, data: &[u8], offset:i32) {
         unsafe 
         {
