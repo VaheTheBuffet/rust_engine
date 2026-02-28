@@ -6,6 +6,7 @@ pub(super) struct Buffer{
     pub(super) memory: vk::DeviceMemory,
     pub(super) memory_mapped: *const std::ffi::c_void,
     pub(super) size: vk::DeviceSize,
+    pub(super) range: vk::DeviceSize,
     device: Arc<device::Device>,
 }
 
@@ -25,6 +26,7 @@ impl Buffer {
     pub(super) fn new(
         api: &vulkan::VKInner, 
         size: vk::DeviceSize, 
+        range: vk::DeviceSize,
         usage: vk::BufferUsageFlags, 
         properties: vk::MemoryPropertyFlags
     ) -> Buffer 
@@ -39,9 +41,7 @@ impl Buffer {
 
         let memory_requirements = unsafe{api.device.device.get_buffer_memory_requirements(buffer)};
 
-        let alloc_info = vk::MemoryAllocateInfo::default()
-            .allocation_size(size)
-            .memory_type_index(
+        let alloc_info = vk::MemoryAllocateInfo::default() .allocation_size(size) .memory_type_index(
                 image::find_memory_type(
                     &api.instance, 
                     api.physical_device, 
@@ -62,6 +62,7 @@ impl Buffer {
             memory: buffer_memory, 
             memory_mapped: std::ptr::null(), 
             size,
+            range,
             device: api.device.clone()
         }
     }
@@ -86,16 +87,18 @@ impl Buffer {
     {
         let mut staging_buffer = Buffer::new(
             api, 
-            data.len() as vk::DeviceSize, 
+            data.len() as vk::DeviceSize,
+            0,
             vk::BufferUsageFlags::TRANSFER_SRC, 
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT);
 
         staging_buffer.map_memory();
-        <Buffer as crate::renderer::Buffer>::buffer_sub_data(&staging_buffer, data, 0);
+        <Buffer as crate::renderer::Buffer>::sub_data(&mut staging_buffer, data, 0);
 
         let final_buffer = Buffer::new(
             api, 
             data.len() as vk::DeviceSize, 
+            0,
             vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::VERTEX_BUFFER, 
             vk::MemoryPropertyFlags::DEVICE_LOCAL);
 
@@ -113,17 +116,23 @@ impl crate::renderer::Buffer for Buffer
         println!("buffer already allocated at creation time");
     }
 
-    fn buffer_data(&self, data: &[u8]) {
+    fn data(&mut self, data: &[u8]) {
+        if self.memory_mapped.is_null() {
+            panic!("not a dynamic buffer!");
+        }
+
         unsafe {
             std::ptr::copy_nonoverlapping(data.as_ptr(), self.memory_mapped as _, data.len());
         }
     }
 
-    fn buffer_sub_data(&self, data: &[u8], offset:i32) {
-        unsafe {
+    fn sub_data(&self, data: &[u8], offset:i32) {
+        unsafe 
+        {
             std::ptr::copy_nonoverlapping(
                 data.as_ptr(), 
-                (self.memory_mapped as *mut u8).add(offset as _), 
+                (self.memory_mapped as *mut u8)
+                    .add(offset as _),
                 data.len()
             );
         }

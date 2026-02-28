@@ -214,6 +214,7 @@ impl Api for VKInner {
             BufferCreateInfo::Dynamic(size) => {
                 let mut buffer = buffer::Buffer::new(
                     &self,
+                    (3_000_000) as vk::DeviceSize,
                     size as vk::DeviceSize,
                     vk::BufferUsageFlags::UNIFORM_BUFFER,
                     vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT

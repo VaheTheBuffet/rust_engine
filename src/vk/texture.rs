@@ -27,6 +27,7 @@ impl Texture {
 
         let mut staging_buffer = buffer::Buffer::new(
             api, image_size,
+            0,
             vk::BufferUsageFlags::TRANSFER_SRC, 
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT);
 

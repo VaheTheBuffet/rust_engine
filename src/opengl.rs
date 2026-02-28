@@ -194,7 +194,7 @@ impl Drop for GLBuffer
 
 impl Buffer for GLBuffer 
 {
-    fn buffer_data(&self, data: &[u8]) 
+    fn data(&mut self, data: &[u8]) 
     {
         unsafe 
         {
@@ -232,7 +232,7 @@ impl Buffer for GLBuffer
         }
     }
 
-    fn buffer_sub_data(&self, data: &[u8], offset: i32) 
+    fn sub_data(&self, data: &[u8], offset: i32) 
     {
         unsafe 
         {
@@ -527,6 +527,11 @@ impl<'a> CommandBuffer<'a> for GLCommandBuffer<'a>
             self.gl.clear_color(0.6, 0.8, 0.99, 1.0);
             self.gl.clear(glow::COLOR_BUFFER_BIT | glow::DEPTH_BUFFER_BIT);
         }
+    }
+
+    fn update_buffer(&mut self, buffer: &dyn Buffer, data: &[u8], offset: i32)
+    {
+        buffer.sub_data(data, offset);
     }
 
     fn submit(&mut self) 

@@ -156,7 +156,7 @@ impl SwapchainSupportDetails
     {
         for &present_mode in &self.present_modes 
         {
-            if present_mode == vk::PresentModeKHR::MAILBOX {
+            if present_mode == vk::PresentModeKHR::IMMEDIATE {
                 return present_mode
             }
         }

@@ -11,6 +11,15 @@ pub struct Transform
     proj: [f32; 16]
 }
 
+impl Transform {
+    pub fn as_bytes(&self) -> &[u8] 
+    {
+        unsafe 
+        {
+            std::slice::from_raw_parts(self as *const _ as *const u8, size_of::<Transform>())
+        }
+    }
+}
 
 pub struct Scene<'a>
 {
@@ -101,7 +110,6 @@ impl<'a> Scene<'a>
 
         command_buffer.bind_pipeline(unsafe{&*((&*chunk_pipeline) as *const _)});
         command_buffer.bind_descriptors(descriptors.as_slice());
-        uniform_buffer.buffer_sub_data(PROJECTION.as_bytes(), offset_of!(Transform, proj) as i32);
 
         let world = world::World::new();
         Scene
@@ -128,7 +136,13 @@ impl<'a> Scene<'a>
             {
                 if *len > 0 //&& player.is_in_frustum(util::chunk_center_from_global_index(pos)) 
                 {
-                    self.uniform_buffer.buffer_sub_data(math::get_model(pos).as_bytes(), 0 as i32);
+                    let transform = Transform{
+                        model: math::get_model(pos),
+                        view: player.get_view_mat(),
+                        proj: player.get_proj_mat()
+                    };
+
+                    self.command_buffer.update_buffer(self.uniform_buffer.as_ref(), transform.as_bytes(), 0);
                     self.command_buffer.bind_vertex_buffer(mesh.as_ref());
                     self.command_buffer.draw(0, *len as i32);
                 }
@@ -140,7 +154,6 @@ impl<'a> Scene<'a>
 
     pub fn update(&mut self, player:&camera::Player) 
     {
-        self.uniform_buffer.buffer_sub_data(player.get_view_mat().as_bytes(), offset_of!(Transform, view) as i32);
         for _ in 0..10
         {
             if let Ok(mesh) = self.chunk_mesh_rx.try_recv() && mesh.vertices.len() > 0

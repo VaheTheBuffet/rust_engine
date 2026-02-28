@@ -146,7 +146,7 @@ impl Pipeline { pub(super) fn new(
                 match descriptor {
                     renderer::DescriptorInfo::Uniform {bind_point, size:_} => {
                         vk::DescriptorSetLayoutBinding::default()
-                            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
                             .descriptor_count(1)
                             .stage_flags(vk::ShaderStageFlags::VERTEX)
                             .binding(*bind_point as u32)
@@ -174,7 +174,7 @@ impl Pipeline { pub(super) fn new(
                 match descriptor {
                     renderer::DescriptorInfo::Uniform{bind_point:_, size:_} => {
                         vk::DescriptorPoolSize::default()
-                            .ty(vk::DescriptorType::UNIFORM_BUFFER)
+                            .ty(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
                             .descriptor_count(vulkan::VKInner::FRAMES_IN_FLIGHT)
                     }
 

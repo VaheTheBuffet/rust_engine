@@ -42,14 +42,19 @@ pub trait CommandBuffer<'a> {
     fn bind_pipeline(&mut self, pipeline: &'a dyn Pipeline);
     fn bind_vertex_buffer(&mut self, buf: &dyn Buffer); 
     fn bind_descriptors(&mut self, descriptors: &[DescriptorWriteInfo]);
+
+    //This method is like Buffer::sub_data, except it's guarunteed to be synchronized
+    //with the device
+    fn update_buffer(&mut self, buffer: &dyn Buffer, data: &[u8], offset: i32);
+
     fn begin(&mut self);
     fn submit(&mut self);
 }
 
 pub trait Buffer {
-    fn buffer_data(&self, data: &[u8]);
+    fn data(&mut self, data: &[u8]);
     fn allocate(&self, size: i32);
-    fn buffer_sub_data(&self, data: &[u8], offset:i32);
+    fn sub_data(&self, data: &[u8], offset:i32);
     fn as_any(&self) -> &dyn Any;
 }
 

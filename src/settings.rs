@@ -54,7 +54,7 @@ pub mod game_settings
 {
     use super::chunk_settings;
 
-    pub const RENDER_DISTANCE:i32 = 8;
+    pub const RENDER_DISTANCE:i32 = 5;
     pub const RENDER_VOL:i32 = (2*RENDER_DISTANCE+1)*(2*RENDER_DISTANCE+1)*(2*RENDER_DISTANCE+1);
 
     pub const SEED:u32 = 1;
