@@ -21,7 +21,7 @@ impl VoxelEngine
 
         let mut glfw = glfw::init(fail_on_errors!()).unwrap();
 
-        let api_create_info = renderer::ApiCreateInfo::VK;
+        let api_create_info = renderer::ApiCreateInfo::GL;
         let (mut window, events, api) = api_create_info.request_api(&mut glfw);
 
         window.set_cursor_mode(glfw::CursorMode::Disabled);

@@ -59,19 +59,19 @@ impl<'a> Scene<'a>
             }
         );
 
-        let shader_info = renderer::ShaderInfo::SpirV(
-            &std::fs::read("./shaders/chunk_vert.spv")
-                .expect("failed to read shader"), 
-            &std::fs::read("./shaders/chunk_frag.spv")
-                .expect("failed to read shader")
-        );
-
-//        let shader_info = renderer::ShaderInfo::Text(
-//            &std::fs::read_to_string("./shaders/chunk.vert")
+//        let shader_info = renderer::ShaderInfo::SpirV(
+//            &std::fs::read("./shaders/chunk_vert.spv")
 //                .expect("failed to read shader"), 
-//            &std::fs::read_to_string("./shaders/chunk.frag")
+//            &std::fs::read("./shaders/chunk_frag.spv")
 //                .expect("failed to read shader")
 //        );
+
+        let shader_info = renderer::ShaderInfo::Text(
+            &std::fs::read_to_string("./shaders/chunk.vert")
+                .expect("failed to read shader"), 
+            &std::fs::read_to_string("./shaders/chunk.frag")
+                .expect("failed to read shader")
+        );
 
         let uniform_descriptor = renderer::DescriptorInfo::Uniform{
             size: size_of::<Transform>() as i32 as _, 
