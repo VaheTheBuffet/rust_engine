@@ -7,6 +7,7 @@ use crate::renderer::*;
 pub struct GLinner 
 {
     gl: Arc<glow::Context>,
+    pwindow: *mut glfw::ffi::GLFWwindow
 }
 
 impl GLinner 
@@ -14,7 +15,7 @@ impl GLinner
     pub fn new(window: &mut glfw::PWindow) -> GLinner 
     {
         unsafe {
-            let gl = glow::Context::from_loader_function(|s| 
+            let mut gl = glow::Context::from_loader_function(|s| 
                 match window.get_proc_address(s) 
                 {
                     Some(ptr) => {ptr as _ } 
@@ -26,7 +27,16 @@ impl GLinner
             gl.enable(glow::CULL_FACE);
             gl.enable(glow::BLEND);
 
-            GLinner{gl: Arc::new(gl)}
+            #[cfg(debug_assertions)]
+            {
+                gl.enable(glow::DEBUG_OUTPUT);
+                gl.debug_message_callback(debug_message_callback);
+            }
+
+            let pwindow = <glfw::Window as glfw::Context>::window_ptr(window);
+
+            GLinner{gl: Arc::new(gl), pwindow}
+
         }
     }
 }
@@ -47,7 +57,7 @@ impl Api for GLinner
 
     fn create_command_buffer<'a>(&self) -> Result<Box<dyn CommandBuffer<'a> + 'a>, ()>
     {
-        Ok(Box::new(GLCommandBuffer::new(self.gl.clone())))
+        Ok(Box::new(GLCommandBuffer::new(&self)))
     }
 
     fn create_buffer(&self, buffer_memory: BufferCreateInfo) -> Result<Box<dyn Buffer>, ()> 
@@ -55,7 +65,7 @@ impl Api for GLinner
         Ok(Box::new(GLBuffer::new(self.gl.clone(), buffer_memory)))
     }
 
-    fn create_texture(&mut self, texture_info: TextureCreateInfo) -> Result<Box<dyn Texture>, ()> 
+    fn create_texture(&self, texture_info: TextureCreateInfo) -> Result<Box<dyn Texture>, ()> 
     {
         let res = Ok(Box::new(GLTexture::new(self.gl.clone(), texture_info)) as _);
         res
@@ -172,7 +182,7 @@ impl GLBuffer
     fn new(gl: Arc<glow::Context>, info: BufferCreateInfo) -> GLBuffer
     {
         let buf = unsafe {
-            gl.create_buffer().expect("failed to create buffer")
+            gl.create_named_buffer().expect("failed to create buffer")
         };
 
         match info {
@@ -418,20 +428,21 @@ impl Pipeline for GLPipeline
 
 struct GLCommandBuffer<'a> {
     gl: Arc<glow::Context>,
-    pipeline: Option<&'a GLPipeline>
+    pipeline: Option<&'a GLPipeline>,
+    pwindow: *mut glfw::ffi::GLFWwindow
 }
 
 impl<'a> GLCommandBuffer<'_> 
 {
-    fn new(gl: Arc<glow::Context>) -> GLCommandBuffer<'a>
+    fn new(api: &GLinner) -> GLCommandBuffer<'a>
     {
-        GLCommandBuffer{gl, pipeline: None}
+        GLCommandBuffer{gl: api.gl.clone(), pipeline: None, pwindow: api.pwindow}
     }
 
     fn bind_buffer(&self, buf: &dyn Buffer, source_binding: usize)
     {
         let buffer = buf.as_any().downcast_ref::<GLBuffer>()
-            .expect("wrong type of buffer for api");
+            .expect("attempted to bind non GL buffer to GL command buffer");
 
         let pipeline = self.pipeline.expect("bind pipeline before binding buffer");
 
@@ -450,7 +461,7 @@ impl<'a> GLCommandBuffer<'_>
     fn bind_texture(&self, tex: &dyn Texture, source_binding: usize) 
     {
         let texture = tex.as_any().downcast_ref::<GLTexture>()
-            .expect("could not read provided texture");
+            .expect("attempted to bind non GL texture to GL command buffer");
 
         let pipeline = self.pipeline.expect("bind pipeline before binding image");
 
@@ -554,9 +565,17 @@ impl<'a> CommandBuffer<'a> for GLCommandBuffer<'a>
         // I dont't know what this should do in opengl
         // This would just swap buffers but the window does it for us 
         // in opengl, unlike vulkan
+        unsafe 
+        {
+            glfw::ffi::glfwSwapBuffers(self.pwindow);
+        }
     }
 }
 
+fn debug_message_callback(source: u32, ty: u32, id: u32, severity: u32, msg: &str)
+{
+    eprintln!("{}", msg);
+}
 
 #[unsafe(no_mangle)]
 unsafe extern "system" fn unloaded_function() 

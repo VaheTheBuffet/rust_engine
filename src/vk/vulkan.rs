@@ -227,7 +227,7 @@ impl Api for VKInner {
         Ok(Box::new(buffer))
     }
 
-    fn create_texture(&mut self, texture_info: TextureCreateInfo) -> Result<Box<dyn Texture>, ()> 
+    fn create_texture(&self, texture_info: TextureCreateInfo) -> Result<Box<dyn Texture>, ()> 
     {
         Ok(Box::new(texture::Texture::new(&self, texture_info)))
     }

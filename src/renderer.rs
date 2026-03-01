@@ -8,14 +8,43 @@ pub enum ApiCreateInfo {
 }
 
 impl ApiCreateInfo {
-    pub fn request_api(&self, pwindow: &mut glfw::PWindow, glfw: &glfw::Glfw) -> ApiHandle {
+    pub fn request_api(
+        &self, glfw: &mut glfw::Glfw
+    ) -> (glfw::PWindow, glfw::GlfwReceiver<(f64, glfw::WindowEvent)>, ApiHandle) 
+    {
+
         match self {
             ApiCreateInfo::VK => {
-                ApiHandle{inner: Box::new(vulkan::VKInner::new(pwindow, glfw))}
+                glfw.window_hint(glfw::WindowHint::FocusOnShow(true));
+                glfw.window_hint(glfw::WindowHint::ClientApi(glfw::ClientApiHint::NoApi));
+
+                let (window, events) = glfw.create_window(
+                    crate::settings::WIDTH, crate::settings::HEIGHT, "Voxel Engine", glfw::WindowMode::Windowed
+                ).expect("Failed to create window");
+
+                let api = ApiHandle{inner: Box::new(vulkan::VKInner::new(&window, glfw))};
+
+                (window, events, api)
             }
 
             ApiCreateInfo::GL => {
-                ApiHandle{inner: Box::new(opengl::GLinner::new(pwindow))}
+                glfw.window_hint(glfw::WindowHint::ContextVersion(4, 5));
+                glfw.window_hint(glfw::WindowHint::OpenGlProfile(glfw::OpenGlProfileHint::Core));
+                glfw.window_hint(glfw::WindowHint::OpenGlForwardCompat(true));
+                glfw.window_hint(glfw::WindowHint::OpenGlDebugContext(false));
+                glfw.window_hint(glfw::WindowHint::FocusOnShow(true));
+                #[cfg(debug_assertions)]
+                glfw.window_hint(glfw::WindowHint::OpenGlDebugContext(true));
+
+                let (mut window, events) = glfw.create_window(
+                    crate::settings::WIDTH, crate::settings::HEIGHT, "Voxel Engine", glfw::WindowMode::Windowed
+                ).expect("Failed to create window");
+
+                let api = ApiHandle{inner: Box::new(opengl::GLinner::new(&mut window))};
+
+                <glfw::Window as glfw::Context>::make_current(&mut window);
+                glfw.set_swap_interval(glfw::SwapInterval::None);
+                (window, events, api)
             }
         }
     }
@@ -29,7 +58,7 @@ pub trait Api {
     fn create_pipeline(&self, pipeline_info: PipelineInfo) -> Result<Box<dyn Pipeline>, ()>;
     fn create_command_buffer<'a>(&self) -> Result<Box<dyn CommandBuffer<'a> + 'a>, ()>;
     fn create_buffer(&self, buffer_info: BufferCreateInfo) -> Result<Box<dyn Buffer>, ()>;
-    fn create_texture(&mut self, texture_info: TextureCreateInfo<'_>) -> Result<Box<dyn Texture>, ()>;
+    fn create_texture(&self, texture_info: TextureCreateInfo<'_>) -> Result<Box<dyn Texture>, ()>;
 }
 
 pub trait Pipeline {

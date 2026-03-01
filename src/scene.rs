@@ -1,6 +1,5 @@
 use crate::*;
-use std::{collections::HashMap, mem::offset_of};
-use image::EncodableLayout;
+use std::{collections::HashMap};
 use rayon::prelude::*;
 
 
@@ -34,7 +33,7 @@ pub struct Scene<'a>
     texture: Box<dyn renderer::Texture>,
 
     chunk_pipeline: Box<dyn renderer::Pipeline>,
-    api: renderer::ApiHandle,
+    api: Arc<renderer::ApiHandle>,
 }
 
 pub struct MeshBuilder 
@@ -47,7 +46,7 @@ pub struct MeshBuilder
 impl<'a> Scene<'a>
 {
     pub fn new(
-        mut api: renderer::ApiHandle,
+        api: Arc<renderer::ApiHandle>,
         chunk_mesh_rx: mpsc::Receiver<chunk::ChunkMesh>,
         chunk_tx: mpsc::Sender<world::ChunkCluster>) -> Scene<'a>
     {
@@ -60,19 +59,19 @@ impl<'a> Scene<'a>
             }
         );
 
-//        let shader_info = renderer::ShaderInfo::SpirV(
-//            &std::fs::read("./shaders/chunk_vert.spv")
-//                .expect("failed to read shader"), 
-//            &std::fs::read("./shaders/chunk_frag.spv")
-//                .expect("failed to read shader")
-//        );
-
-        let shader_info = renderer::ShaderInfo::Text(
-            &std::fs::read_to_string("./shaders/chunk.vert")
+        let shader_info = renderer::ShaderInfo::SpirV(
+            &std::fs::read("./shaders/chunk_vert.spv")
                 .expect("failed to read shader"), 
-            &std::fs::read_to_string("./shaders/chunk.frag")
+            &std::fs::read("./shaders/chunk_frag.spv")
                 .expect("failed to read shader")
         );
+
+//        let shader_info = renderer::ShaderInfo::Text(
+//            &std::fs::read_to_string("./shaders/chunk.vert")
+//                .expect("failed to read shader"), 
+//            &std::fs::read_to_string("./shaders/chunk.frag")
+//                .expect("failed to read shader")
+//        );
 
         let uniform_descriptor = renderer::DescriptorInfo::Uniform{
             size: size_of::<Transform>() as i32 as _, 
