@@ -1,5 +1,6 @@
-Reasonably optimized Minecraft-like voxel game written in Rust 
-Uses a custom engine that interfaces OpenGL and Vulkan
+Reasonably optimized Minecraft-like voxel game written in Rust<br>
+Uses a custom engine that interfaces OpenGL and Vulkan<br>
+Featuring custom, safe RAII wrappers over raw api handles
 
 WASDQE + mouse for movement
 
